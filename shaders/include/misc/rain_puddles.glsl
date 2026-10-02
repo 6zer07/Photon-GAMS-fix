@@ -14,13 +14,22 @@ float get_ripple_height(vec2 coord) {
 }
 
 float get_puddle_noise(vec3 world_pos, vec3 flat_normal, vec2 light_levels) {
+	float puddle;
+#if PUDDLE_MODE == PUDDLE_MODE_PATCHY
+	// Patchy puddles (original look)
 	const float puddle_frequency = 0.025;
+	puddle = texture(noisetex, world_pos.xz * puddle_frequency).w;
+	puddle = linear_step(0.45, 0.55, puddle);
+#else
+	// Full coverage puddles while wet (similar to Complementary's "Full Coverage" mode):
+	// every rain-capable, flat, outdoor surface is covered while wet
+	puddle = 1.0;
+#endif
 
-	float puddle = texture(noisetex, world_pos.xz * puddle_frequency).w;
-	      puddle = linear_step(0.45, 0.55, puddle) * wetness * biome_may_rain * max0(flat_normal.y);
+	puddle *= wetness * biome_may_rain * step(0.99, flat_normal.y);
 
 	// Prevent puddles from appearing indoors
-	puddle *= (1.0 - cube(light_levels.x)) * pow5(light_levels.y);
+	puddle *= (1.0 - cube(light_levels.x)) * linear_step(14.0 / 15.0, 1.0, light_levels.y);
 
 	return puddle;
 }
@@ -30,6 +39,7 @@ bool get_rain_puddles(
 	vec3 flat_normal,
 	vec2 light_levels,
 	float porosity,
+	uint material_mask,
 	inout vec3 normal,
 	inout vec3 albedo,
 	inout vec3 f0,
@@ -40,16 +50,17 @@ bool get_rain_puddles(
 	return false;
 #endif
 
-	const float puddle_f0                      = 0.02;
-	const float puddle_roughness               = 0.002;
+	const float puddle_f0                      = 0.2;
+	const float puddle_roughness               = 0.008;
 	const float puddle_darkening_factor        = 0.33;
-	const float puddle_darkening_factor_porous = 0.67;
+	const float puddle_darkening_factor_porous = 0.5;
 
-	if (wetness < 0.0 || biome_may_rain < 0.0) return false;
+	if (wetness < 0.0 || biome_may_rain < 0.0
+		|| material_mask == 5) return false;
 
 	float puddle = get_puddle_noise(world_pos, flat_normal, light_levels);
 
-	if (puddle < eps) return false;
+	if (puddle < eps || puddle < 0.00001) return false;
 
 	// Puddle darkening
 	albedo *= 1.0 - puddle_darkening_factor_porous * porosity * puddle;
@@ -58,7 +69,7 @@ bool get_rain_puddles(
 
 	// Replace material with puddle material
 	f0             = max(f0, mix(f0, vec3(puddle_f0), puddle));
-	roughness      = puddle_roughness;
+	roughness      = mix(0.5 , puddle_roughness, smoothstep(eps, 0.001, puddle));
 	ssr_multiplier = max(ssr_multiplier, puddle);
 
 	// Ripple animation

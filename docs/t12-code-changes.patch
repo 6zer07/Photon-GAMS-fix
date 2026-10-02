@@ -1,0 +1,731 @@
+--- a/shaders/include/lighting/directional_lightmaps.glsl
++++ b/shaders/include/lighting/directional_lightmaps.glsl
+@@ -3,11 +3,11 @@
+ 
+ // Based on Ninjamike's implementation in shaderLABS #snippets
+ 
+-vec2 get_directional_lightmaps(vec3 normal) {
++vec2 get_directional_lightmaps(vec3 position_scene, vec3 normal) {
+ 	vec2 lightmap_mul = vec2(1.0);
+ 
+ 	vec2 lightmap_gradient; vec3 lightmap_dir;
+-	mat2x3 pos_gradient = mat2x3(dFdx(scene_pos), dFdy(scene_pos));
++	mat2x3 pos_gradient = mat2x3(dFdx(position_scene), dFdy(position_scene));
+ 
+ 	// Blocklight
+ 
+--- a/shaders/include/misc/rain_puddles.glsl
++++ b/shaders/include/misc/rain_puddles.glsl
+@@ -14,13 +14,22 @@
+ }
+ 
+ float get_puddle_noise(vec3 world_pos, vec3 flat_normal, vec2 light_levels) {
++	float puddle;
++#if PUDDLE_MODE == PUDDLE_MODE_PATCHY
++	// Patchy puddles (original look)
+ 	const float puddle_frequency = 0.025;
++	puddle = texture(noisetex, world_pos.xz * puddle_frequency).w;
++	puddle = linear_step(0.45, 0.55, puddle);
++#else
++	// Full coverage puddles while wet (similar to Complementary's "Full Coverage" mode):
++	// every rain-capable, flat, outdoor surface is covered while wet
++	puddle = 1.0;
++#endif
+ 
+-	float puddle = texture(noisetex, world_pos.xz * puddle_frequency).w;
+-	      puddle = linear_step(0.45, 0.55, puddle) * wetness * biome_may_rain * max0(flat_normal.y);
++	puddle *= wetness * biome_may_rain * step(0.99, flat_normal.y);
+ 
+ 	// Prevent puddles from appearing indoors
+-	puddle *= (1.0 - cube(light_levels.x)) * pow5(light_levels.y);
++	puddle *= (1.0 - cube(light_levels.x)) * linear_step(14.0 / 15.0, 1.0, light_levels.y);
+ 
+ 	return puddle;
+ }
+@@ -30,6 +39,7 @@
+ 	vec3 flat_normal,
+ 	vec2 light_levels,
+ 	float porosity,
++	uint material_mask,
+ 	inout vec3 normal,
+ 	inout vec3 albedo,
+ 	inout vec3 f0,
+@@ -40,16 +50,17 @@
+ 	return false;
+ #endif
+ 
+-	const float puddle_f0                      = 0.02;
+-	const float puddle_roughness               = 0.002;
++	const float puddle_f0                      = 0.2;
++	const float puddle_roughness               = 0.008;
+ 	const float puddle_darkening_factor        = 0.33;
+-	const float puddle_darkening_factor_porous = 0.67;
++	const float puddle_darkening_factor_porous = 0.5;
+ 
+-	if (wetness < 0.0 || biome_may_rain < 0.0) return false;
++	if (wetness < 0.0 || biome_may_rain < 0.0
++		|| material_mask == 5) return false;
+ 
+ 	float puddle = get_puddle_noise(world_pos, flat_normal, light_levels);
+ 
+-	if (puddle < eps) return false;
++	if (puddle < eps || puddle < 0.00001) return false;
+ 
+ 	// Puddle darkening
+ 	albedo *= 1.0 - puddle_darkening_factor_porous * porosity * puddle;
+@@ -58,7 +69,7 @@
+ 
+ 	// Replace material with puddle material
+ 	f0             = max(f0, mix(f0, vec3(puddle_f0), puddle));
+-	roughness      = puddle_roughness;
++	roughness      = mix(0.5 , puddle_roughness, smoothstep(eps, 0.001, puddle));
+ 	ssr_multiplier = max(ssr_multiplier, puddle);
+ 
+ 	// Ripple animation
+--- a/shaders/lang/en_US.lang
++++ b/shaders/lang/en_US.lang
+@@ -772,6 +772,14 @@
+ option.AIR_FOG_CLOUDY_NOISE_DENSITY_MULTIPLIER.comment = Controls overall cloud density\n\nHigher values = denser/more opaque clouds
+ option.AIR_FOG_COLORED_LIGHT_SHAFTS    = Colored Light Shafts
+ option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = Light shafts passing through translucent objects are tinted by their color
++option.USE_SEPARATE_ENTITY_DRAWS       = Use "Separate Entity Draws"
++comment.USE_SEPARATE_ENTITY_DRAWS      = "separateEntityDraws" is an Iris feature enabling shaderpacks which use deferred-forward hybrid shading, like Photon, to correctly render translucent entities and other objects. However, it can be the cause of some issues. Expect rendering issues such as translucent entities becoming opaque if you disable this!
++option.PUDDLE_MODE                     = Puddle Mode
++option.PUDDLE_MODE.comment             = Choose the puddle shape: patchy keeps the original random puddles, full coverage wets the whole ground while wet
++value.PUDDLE_MODE.PUDDLE_MODE_PATCHY   = Patchy Puddles
++value.PUDDLE_MODE.PUDDLE_MODE_FULL     = Full Coverage
++option.TRANSLUCENT_ALPHA               = Translucent Texture Opacity
++option.TRANSLUCENT_ALPHA.comment       = Adjusts the opacity of translucent textures such as modded entity wings. Lower values make them more transparent
+ option.FOG_CLOUD_SHADOWS               = Cloud Shadow Light Shafts
+ 
+ option.AIR_FOG_MIN_STEPS     = Air Fog Min Steps
+--- a/shaders/lang/zh_CN.lang
++++ b/shaders/lang/zh_CN.lang
+@@ -716,6 +716,16 @@
+ option.AIR_FOG_CLOUDY_NOISE.comment    = 为雾气边缘添加微妙的云层形状, 在清晨更容易看清楚. 需要启用体积雾!
+ option.AIR_FOG_COLORED_LIGHT_SHAFTS    = 光轴着色
+ option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = 光轴穿过半透明事物时会被其颜色所沾染
++option.USE_SEPARATE_ENTITY_DRAWS       = 分离绘制实体
++option.USE_SEPARATE_ENTITY_DRAWS.comment = Iris 的一个功能: 对使用延迟-前向混合渲染的光影启用, 比如说 Photon, 用来使半透明实体和其他对象正确渲染. 但这个功能也会导致一些问题的出现. 禁用此功能可能会导致渲染问题, 例如半透明实体会变得不透明!(旗帜变白 篝火上的肉不渲染)
++option.DITHERED_TRANSLUCENCY_FALLBACK  = 抖动透明度回退
++option.DITHERED_TRANSLUCENCY_FALLBACK.comment = 在启用分离绘制实体时，使用抖动透明度来改善本应透明但无法透明的物体的外观，部分旗帜条纹正常显示.
++option.PUDDLE_MODE                     = 水坑模式
++option.PUDDLE_MODE.comment             = 选择水坑形态: 斑块水坑为原来的随机斑块效果, 全覆盖水坑在湿润时整片地面都湿透
++value.PUDDLE_MODE.PUDDLE_MODE_PATCHY   = 斑块水坑
++value.PUDDLE_MODE.PUDDLE_MODE_FULL     = 全覆盖水坑
++option.TRANSLUCENT_ALPHA               = 半透明贴图不透明度
++option.TRANSLUCENT_ALPHA.comment       = 控制半透明贴图(如模组实体翅膀)的不透明度, 数值越低越透明
+ option.FOG_CLOUD_SHADOWS               = 云影光轴
+ 
+ option.AIR_FOG_MIN_STEPS     = 雾气最小步进
+@@ -1444,4 +1454,4 @@
+ option.WEATHER_D11_FOGGINESS               = 雾浓度
+ option.WEATHER_D11_CLOUDS_CUMULUS_CONGESTUS_AMOUNT = 浓积云
+ option.WEATHER_D11_CLOUDS_CUMULONIMBUS_AMOUNT = 积雨云
+-option.WEATHER_D11_CLOUDS_STRATUS_AMOUNT   = 层云
+\ No newline at end of file
++option.WEATHER_D11_CLOUDS_STRATUS_AMOUNT   = 层云
+--- a/shaders/program/d4_deferred_shading.fsh
++++ b/shaders/program/d4_deferred_shading.fsh
+@@ -13,7 +13,7 @@
+ 
+ layout (location = 0) out vec3 scene_color;
+ 
+-#ifdef IS_IRIS
++#ifdef USE_SEPARATE_ENTITY_DRAWS
+ /* RENDERTARGETS: 0 */
+ #else
+ layout (location = 1) out vec4 colortex3_clear;
+@@ -53,7 +53,7 @@
+ uniform sampler2D colortex11; // clouds history
+ uniform sampler2D colortex12; // clouds apparent distance
+ 
+-#ifndef IS_IRIS
++#ifndef USE_SEPARATE_ENTITY_DRAWS
+ uniform sampler2D colortex3; // OF damage overlay, armor glint
+ #endif
+ 
+@@ -192,7 +192,7 @@
+ }
+ 
+ void main() {
+-#if !defined IS_IRIS
++#if !defined USE_SEPARATE_ENTITY_DRAWS
+ 	colortex3_clear = vec4(0.0);
+ #endif
+ 
+@@ -205,7 +205,7 @@
+ #if defined NORMAL_MAPPING || defined SPECULAR_MAPPING
+ 	vec4 gbuffer_data_1 = texelFetch(colortex2, texel, 0);
+ #endif
+-#if !defined IS_IRIS
++#if !defined USE_SEPARATE_ENTITY_DRAWS
+ 	vec4 overlays       = texelFetch(colortex3, texel, 0);
+ #endif
+ 
+@@ -323,7 +323,7 @@
+ 		vec3 flat_normal   = decode_unit_vector(data[2]);
+ 		vec2 light_levels  = data[3];
+ 
+-#if !defined IS_IRIS
++#if !defined USE_SEPARATE_ENTITY_DRAWS
+ 		uint overlay_id = uint(255.0 * overlays.a);
+ 		albedo = overlay_id == 0u ? albedo + overlays.rgb : albedo; // enchantment glint
+ 		albedo = overlay_id == 1u ? 2.0 * albedo * overlays.rgb : albedo; // damage overlay
+@@ -364,6 +364,7 @@
+ 				flat_normal,
+ 				light_levels,
+ 				material.porosity,
++				material_mask,
+ 				normal,
+ 				material.albedo,
+ 				material.f0,
+@@ -517,4 +518,3 @@
+ 		scene_color = purkinje_shift(scene_color, light_levels);
+ 	}
+ }
+-
+--- a/shaders/program/gbuffers_all_solid.fsh
++++ b/shaders/program/gbuffers_all_solid.fsh
+@@ -14,6 +14,10 @@
+ layout (location = 0) out vec4 gbuffer_data_0; // albedo, block ID, flat normal, light levels
+ layout (location = 1) out vec4 gbuffer_data_1; // detailed normal, specular map (optional)
+ 
++#ifdef PROGRAM_GBUFFERS_HAND
++layout (location = 2) out vec4 translucent_clear; // Clear the translucent overlay where the hand is drawn
++#endif
++
+ /* RENDERTARGETS: 1 */
+ 
+ #ifdef NORMAL_MAPPING
+@@ -22,6 +26,10 @@
+ 
+ #ifdef SPECULAR_MAPPING
+ /* RENDERTARGETS: 1,2 */
++#endif
++
++#ifdef PROGRAM_GBUFFERS_HAND
++/* RENDERTARGETS: 1,2,13 */
+ #endif
+ 
+ in vec2 uv;
+@@ -81,6 +89,9 @@
+ uniform vec2 taa_offset;
+ 
+ uniform vec3 light_dir;
++
++uniform float alphaTestRef = 0.1;
++uniform float rainStrength;
+ 
+ #if defined PROGRAM_GBUFFERS_ENTITIES
+ uniform int entityId;
+@@ -258,9 +269,21 @@
+ 
+ #if defined PROGRAM_GBUFFERS_ENTITIES
+ 	if (material_mask == 102) base_color = vec4(1.0);
+-	if (base_color.a < 0.1 && material_mask != 101) { discard; return; } // Save transparent quad in boats, which masks out water
++	if (base_color.a < alphaTestRef && material_mask != 101) { discard; return; } // Save transparent quad in boats, which masks out water
+ #elif !defined PROGRAM_GBUFFERS_TERRAIN_SOLID
+-	if (base_color.a < 0.1) { discard; return; }
++	if (base_color.a < alphaTestRef) { discard; return; }
++#endif
++
++#if (defined PROGRAM_GBUFFERS_BLOCK || defined PROGRAM_GBUFFERS_ENTITIES) && !(defined USE_SEPARATE_ENTITY_DRAWS && defined IS_IRIS)
++	#ifdef DITHERED_TRANSLUCENCY_FALLBACK
++	// Dithered transparency for translucent objects rendered as solid
++	float dither_pattern = r1(
++		frameCounter, 
++		texelFetch(noisetex, ivec2(gl_FragCoord.xy) & 511, 0).z
++	);
++	float dither_alpha = base_color.a < 1.0 ? base_color.a * TRANSLUCENT_ALPHA : 1.0;
++	if (dither_alpha < dither_pattern) { discard; return; }
++	#endif
+ #endif
+ 
+ #ifdef WHITE_WORLD
+@@ -304,7 +327,7 @@
+ 	adjusted_light_levels *= mix(0.7, 1.0, material_ao);
+ 
+ 	#ifdef DIRECTIONAL_LIGHTMAPS
+-	adjusted_light_levels *= get_directional_lightmaps(normal);
++	adjusted_light_levels *= get_directional_lightmaps(scene_pos, normal);
+ 	#endif
+ #endif
+ 
+@@ -349,8 +372,16 @@
+ #endif
+ 
+ #if defined PROGRAM_GBUFFERS_PARTICLES
+-	// Kill the little rain splash particles
+-	if (base_color.r < 0.29 && base_color.g < 0.45 && base_color.b > 0.75) discard;
++	// Remove the little blue rain-splash dots, but only while it is actually
++	// raining under the open sky. This spares e.g. tap water drips, which look
++	// similar but can run indoors or when it is dry.
++	if (rainStrength > 0.05 && light_levels.y > 0.1
++		&& base_color.r < 0.29 && base_color.g < 0.45 && base_color.b > 0.75) discard;
++#endif
++
++#ifdef PROGRAM_GBUFFERS_HAND
++	// The hand renders after the world/particles; wherever it passes the depth test
++	// it is in front of the translucent layer, so erase particles/water behind it
++	translucent_clear = vec4(0.0);
+ #endif
+ }
+-
+--- a/shaders/program/gbuffers_all_translucent.fsh
++++ b/shaders/program/gbuffers_all_translucent.fsh
+@@ -144,8 +144,13 @@
+ 	#undef SH_SKYLIGHT
+ #endif
+ 
+-#if defined PROGRAM_GBUFFERS_TEXTURED || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT
++#if defined PROGRAM_GBUFFERS_TEXTURED || defined PROGRAM_GBUFFERS_PARTICLES || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT
+ 	#define NO_NORMAL
++	// Premultiplied output, matching Photon 1.3. The blend function for these
++	// programs is ONE / ONE_MINUS_SRC_ALPHA, so the color has to carry its own
++	// alpha. This also makes the fog in-scattering term apply at full strength
++	// instead of being weighted by alpha again when the layer is composited.
++	#define PREMULTIPLIED_ALPHA
+ #endif
+ 
+ #ifdef DIRECTIONAL_LIGHTMAPS
+@@ -398,8 +403,26 @@
+ 
+ 	vec2 adjusted_light_levels = light_levels;
+ 
++#ifdef NO_NORMAL
++	// No normal vector => make one from screen-space partial derivatives
++	// NB: It is important to do this before the alpha discard, otherwise it creates issues on the
++	// outline of things
++	normal = normalize(cross(dFdx(position_scene), dFdy(position_scene)));
++#endif
++
+ #if defined (PHYSICS_MOD_OCEAN) && defined (PHYSICS_OCEAN)
+ 	WavePixelData wave;
++#endif
++
++#if (defined PROGRAM_GBUFFERS_PARTICLES || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT) && PARTICLE_OCCLUSION == PARTICLE_OCCLUSION_ON
++	// This program writes to the translucent layer, which is composited on top
++	// of the scene without a depth test, so particles hidden behind solid
++	// geometry have to be rejected here. Some mods draw particle effects with
++	// depth testing disabled on purpose (Ars Nouveau's ritual helix effects,
++	// for example), which would otherwise shine through mobs and terrain.
++	// NB: this has to stay after the normal calculation above, discarding
++	// before the screen-space derivatives would make them undefined.
++	if (depth1 < gl_FragCoord.z - 1e-5) { discard; return; }
+ #endif
+ 
+ //------------------------------------------------------------------------//
+@@ -455,9 +478,24 @@
+ 		fragment_color.rgb = mix(fragment_color.rgb, entityColor.rgb, entityColor.a);
+ #endif
+ 
+-		if (fragment_color.a < 0.1) discard;
+-
+-		material = material_from(fragment_color.rgb * fragment_color.a, material_mask, world_pos, tbn[2], adjusted_light_levels);
++#if defined PROGRAM_GBUFFERS_ENTITIES_TRANSLUCENT || defined PROGRAM_GBUFFERS_PARTICLES || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT || defined PROGRAM_GBUFFERS_BLOCK_TRANSLUCENT || defined PROGRAM_GBUFFERS_TEXTURED
++		if (material_mask != 102 && material_mask != 62) fragment_color.a *= TRANSLUCENT_ALPHA;
++#endif
++
++		if (fragment_color.a < 0.1) { discard; return; }
++
++#if defined PROGRAM_GBUFFERS_PARTICLES
++		// Remove the little blue rain-splash dots, but only while it is actually
++		// raining under the open sky. This spares e.g. blue spell/ritual
++		// particles, which look similar but can run indoors or when it is dry.
++		if (rainStrength > 0.05 && light_levels.y > 0.1
++			&& fragment_color.r < 0.29 && fragment_color.g < 0.45 && fragment_color.b > 0.75) {
++			discard;
++			return;
++		}
++#endif
++
++		material = material_from(fragment_color.rgb, material_mask, world_pos, tbn[2], adjusted_light_levels);
+ 
+ #if defined PROGRAM_GBUFFERS_LIGHTNING
+ 		// Lightning (since gbuffers_lightning)
+@@ -467,7 +505,7 @@
+ 
+ 		//--//
+ 
+-#ifdef NORMAL_MAPPING
++#if defined NORMAL_MAPPING && !defined NO_NORMAL
+ 		float material_ao;
+ 		decode_normal_map(normal_map, normal_tangent, material_ao);
+ 
+@@ -476,7 +514,7 @@
+ 		adjusted_light_levels *= mix(0.7, 1.0, material_ao);
+ 
+ 	#ifdef DIRECTIONAL_LIGHTMAPS
+-		adjusted_light_levels *= get_directional_lightmaps(normal);
++		adjusted_light_levels *= get_directional_lightmaps(position_scene, normal);
+ 	#endif
+ #endif
+ 
+@@ -484,12 +522,6 @@
+ 		decode_specular_map(specular_map, material);
+ #endif
+ 
+-#ifdef NO_NORMAL
+-		// No normal vector => make one from screen-space partial derivatives
+-		normal = normalize(cross(dFdx(position_scene), dFdy(position_scene)));
+-#endif
+-
+-		fragment_color.a = sqrt(fragment_color.a);
+ 	}
+ 
+ #if defined (PHYSICS_MOD_OCEAN) && defined (PHYSICS_OCEAN)
+@@ -595,13 +627,19 @@
+ 	} 
+ #endif 
+ 
+-	fragment_color = vec4(fragment_color.rgb / max(fragment_color.a, eps), fragment_color.a);
++#ifdef PREMULTIPLIED_ALPHA
++	// Premultiply the surface color (diffuse + specular + reflections) before the
++	// fog is added. The blend function of these programs is ONE / ONE_MINUS_SRC_ALPHA,
++	// so the color has to carry its own alpha; premultiplying here instead of at
++	// the very end keeps the fog in-scattering term at full strength, which is
++	// what Photon 1.3 does.
++	fragment_color.rgb *= fragment_color.a;
++#endif
+ 
+ 	// Fog
+ 
+ 	vec4 fog = common_fog(length(position_scene), false);
+ 	fragment_color.rgb  = fragment_color.rgb * fog.a + fog.rgb;
+-	fragment_color.a   *= border_fog(position_scene, direction_world);
+ 
+ 	// Purkinje shift
+ 
+@@ -614,4 +652,3 @@
+ 	refraction_data.zw = split_2x8(normal_tangent.y * 0.5 + 0.5);
+ #endif
+ }
+-
+--- a/shaders/program/gbuffers_all_translucent.vsh
++++ b/shaders/program/gbuffers_all_translucent.vsh
+@@ -150,6 +150,12 @@
+ 	if (gl_Color.r > gl_Color.g && gl_Color.g < 0.6 && gl_Color.b > 0.4) material_mask = 47;
+ #endif
+ 
++#if defined PROGRAM_GBUFFERS_PARTICLES
++	// Particles. 27 = particle material, 47 = glowing particle
++	material_mask = 27;
++	if (gl_Color.r > gl_Color.g && gl_Color.g < 0.6 && gl_Color.b > 0.4) material_mask = 47;
++#endif
++
+ #if defined PROGRAM_GBUFFERS_WATER
+ 	// Fix issue where the normal of the bottom of the water surface is flipped
+ 	if (dot(position_scene, tbn[2]) > 0.0) tbn[2] = -tbn[2];
+@@ -167,4 +173,3 @@
+ 
+ 	gl_Position = position_clip;
+ }
+-
+--- a/shaders/program/gbuffers_damagedblock.fsh
++++ b/shaders/program/gbuffers_damagedblock.fsh
+@@ -13,7 +13,7 @@
+ 
+ layout (location = 0) out vec4 damage_overlay;
+ 
+-#ifdef IS_IRIS
++#ifdef USE_SEPARATE_ENTITY_DRAWS
+ /* RENDERTARGETS: 0 */
+ #else
+ /* RENDERTARGETS: 3 */
+@@ -43,7 +43,7 @@
+ 	damage_overlay = texture(gtexture, uv, lod_bias);
+ 	if (damage_overlay.a < 0.1) discard;
+ 
+-#ifdef IS_IRIS
++#ifdef USE_SEPARATE_ENTITY_DRAWS
+ 	damage_overlay.rgb = 0.5 * srgb_eotf_inv(2.0 * damage_overlay.rgb) * rec709_to_rec2020;
+ 	damage_overlay.a   = 1.0;
+ #else
+@@ -52,4 +52,3 @@
+ 	damage_overlay.a = 1.0 / 255.0;
+ #endif
+ }
+-
+--- a/shaders/program/gbuffers_weather.fsh
++++ b/shaders/program/gbuffers_weather.fsh
+@@ -55,6 +55,6 @@
+ 	frag_color = is_rain
+ 		? vec4(get_rain_color(), RAIN_OPACITY * base_color.a) * tint
+ 		: vec4(get_snow_color(), SNOW_OPACITY * base_color.a) * tint;
++	frag_color.rgb *= frag_color.a;
+ 
+ }
+-
+--- a/shaders/settings.glsl
++++ b/shaders/settings.glsl
+@@ -621,6 +621,20 @@
+   #define PARTICLES_BRIGHTNESS 1.00 // [0.00 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.10 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.20 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.30 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.40 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.50 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.60 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.70 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.80 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.90 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.00 1.01 1.02 1.03 1.04 1.05 1.06 1.07 1.08 1.09 1.10 1.11 1.12 1.13 1.14 1.15 1.16 1.17 1.18 1.19 1.20 1.21 1.22 1.23 1.24 1.25 1.26 1.27 1.28 1.29 1.30 1.31 1.32 1.33 1.34 1.35 1.36 1.37 1.38 1.39 1.40 1.41 1.42 1.43 1.44 1.45 1.46 1.47 1.48 1.49 1.50 1.51 1.52 1.53 1.54 1.55 1.56 1.57 1.58 1.59 1.60 1.61 1.62 1.63 1.64 1.65 1.66 1.67 1.68 1.69 1.70 1.71 1.72 1.73 1.74 1.75 1.76 1.77 1.78 1.79 1.80 1.81 1.82 1.83 1.84 1.85 1.86 1.87 1.88 1.89 1.90 1.91 1.92 1.93 1.94 1.95 1.96 1.97 1.98 1.99 2.00]
+   #define METAL_DIFFUSE 0.70 // [0.10 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.20 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.30 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.40 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.50 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.60 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.70 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.80 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.90 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.00]
+   #define RAIN_PUDDLES
++
++  #define PUDDLE_MODE_PATCHY 0
++  #define PUDDLE_MODE_FULL   1
++  #define PUDDLE_MODE PUDDLE_MODE_FULL // [PUDDLE_MODE_PATCHY PUDDLE_MODE_FULL]
++
++  #define TRANSLUCENT_ALPHA 0.75 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++
++  // Particles that are hidden behind solid geometry are discarded. Some mods
++  // draw particle effects with depth testing disabled on purpose (Ars Nouveau's
++  // ritual helix effects, for example), which makes them show through mobs and
++  // terrain. Turn this off to keep that "shines through everything" look.
++  #define PARTICLE_OCCLUSION_OFF 0
++  #define PARTICLE_OCCLUSION_ON  1
++  #define PARTICLE_OCCLUSION PARTICLE_OCCLUSION_ON // [PARTICLE_OCCLUSION_OFF PARTICLE_OCCLUSION_ON]
+ 
+ // Resource Pack Settings
+ 
+@@ -991,6 +1005,9 @@
+   #define ENCHANTMENT_GLINT_G 1.0 // [0.00 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.10 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.20 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.30 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.40 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.50 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.60 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.70 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.80 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.90 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.00]
+   #define ENCHANTMENT_GLINT_B 1.0 // [0.00 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.10 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.20 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.30 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.40 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.50 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.60 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.70 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.80 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.90 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.00]
+ 
++//#define USE_SEPARATE_ENTITY_DRAWS 
++  #define DITHERED_TRANSLUCENCY_FALLBACK
++
+   #define DAYLIGHT_CYCLE
+ 
+ //#define PHYSICS_MOD_OCEAN
+@@ -1243,3 +1260,11 @@
+ 
+   #ifdef BLACK_NIGHT_SKY
+   #endif
++
++#ifdef USE_SEPARATE_ENTITY_DRAWS
++#endif
++
++// Not available on OF
++#ifndef IS_IRIS
++    #undef USE_SEPARATE_ENTITY_DRAWS
++#endif
+--- a/shaders/shaders.properties
++++ b/shaders/shaders.properties
+@@ -12,10 +12,10 @@
+ screen.lighting     = [shadows] [ao] [light_sources] SHADING_STRENGTH AO_IN_SUNLIGHT SH_SKYLIGHT <empty> COLORED_LIGHTS [colored_lights] <empty> HANDHELD_LIGHTING HANDHELD_LIGHTING_INTENSITY CLOUD_SHADOWS CLOUD_SHADOWS_INTENSITY CLOUD_SHADOW_RESOLUTION SSS_SHEEN SSS_INTENSITY SSS_DENSITY
+ screen.sky          = [sun_moon] [clouds] <empty> <empty> [stars] [shooting_stars] [galaxy] [aurora] [nebula] [end_solar_flare] <empty> <empty> BLACK_NIGHT_SKY SKY_GROUND
+ screen.fog          = VL AIR_FOG_CLOUDY_NOISE AIR_FOG_COLORED_LIGHT_SHAFTS FOG_CLOUD_SHADOWS <empty> <empty> [fog_rlh] [fog_mie] <empty> <empty> BORDER_FOG CAVE_FOG BLOOMY_FOG BLOOMY_FOG_INTENSITY NETHER_FOG_INTENSITY CAVE_FOG_INTENSITY [fog_advanced] END_FOG_INTENSITY
+-screen.materials    = NORMAL_MAPPING SPECULAR_MAPPING POM [rp_settings] <empty> <empty> HARDCODED_SPECULAR HARDCODED_EMISSION HARDCODED_SSS RAIN_PUDDLES HARDCODED_ORE ORE_BRIGHTNESS HARDCODED_PARTICLES PARTICLES_BRIGHTNESS HARDCODED_POROSITY METAL_DIFFUSE [reflections] [refraction]
++screen.materials    = NORMAL_MAPPING SPECULAR_MAPPING POM [rp_settings] <empty> <empty> HARDCODED_SPECULAR HARDCODED_EMISSION HARDCODED_SSS RAIN_PUDDLES PUDDLE_MODE TRANSLUCENT_ALPHA PARTICLE_OCCLUSION HARDCODED_ORE ORE_BRIGHTNESS HARDCODED_PARTICLES PARTICLES_BRIGHTNESS HARDCODED_POROSITY METAL_DIFFUSE [reflections] [refraction]
+ screen.water        = [water_waves] [water_fog_coeff] WATER_EDGE_HIGHLIGHT WATER_EDGE_HIGHLIGHT_INTENSITY WATER_CAUSTICS WATER_CAUSTICS_INTENSITY SNELLS_WINDOW SNELLS_WINDOW_INTENSITY WATER_TEXTURE WATER_TEXTURE_HIGHLIGHT_INTENSITY <empty> WATER_TEXTURE_HIGHLIGHT_UNDERGROUND_INTENSITY WATER_TEXTURE_HIGHLIGHT_BIOME_COLOR WATER_TEXTURE_HIGHLIGHT_BIOME_COLOR_INTENSITY BIOME_WATER_COLOR BIOME_WATER_COLOR_INTENSITY
+ screen.post         = [color_grading] [exposure] BLOOM BLOOM_INTENSITY DOF [dof_settings] <empty> <empty> MOTION_BLUR MOTION_BLUR_INTENSITY TAA FXAA TAAU TAAU_RENDER_SCALE CAS CAS_INTENSITY VIGNETTE VIGNETTE_INTENSITY
+-screen.misc         = DEBUG_VIEW DEBUG_SAMPLER WHITE_WORLD FANCY_NETHER_PORTAL CUSTOM_SKY CUSTOM_SKY_BRIGHTNESS TONEMAP_COMPARISON TONEMAP_PLOT tonemap_left tonemap_right [box] ENCHANTMENT_GLINT_BRIGHTNESS [compatibility] [enchantment_glint_color]
++screen.misc         = DEBUG_VIEW DEBUG_SAMPLER WHITE_WORLD FANCY_NETHER_PORTAL CUSTOM_SKY CUSTOM_SKY_BRIGHTNESS TONEMAP_COMPARISON TONEMAP_PLOT tonemap_left tonemap_right [box] ENCHANTMENT_GLINT_BRIGHTNESS USE_SEPARATE_ENTITY_DRAWS DITHERED_TRANSLUCENCY_FALLBACK [compatibility] [enchantment_glint_color]
+ screen.box          = BOX_MODE BOX_LINE_WIDTH BOX_COLOR_R BOX_COLOR_G BOX_COLOR_B BOX_EMISSION
+ 
+ screen.colored_lights   = COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION COLOREDLIGHT_SATURATION VOXEL_VOLUME_SIZE COLORED_LIGHT_I GLOWING_FLOWERS GLOWING_ORE COLORED_CANDLES END_COLORED_LIGHTING SCULK_I [colored_lights_sources]
+@@ -214,8 +214,11 @@
+ oldHandLight        = false
+ oldLighting         = false
+ rain.depth          = false
++particles.ordering  = mixed
+ separateAo          = true
++#ifdef USE_SEPARATE_ENTITY_DRAWS
+ separateEntityDraws = true
++#endif
+ underwaterOverlay   = false
+ vignette            = false
+ 
+@@ -310,6 +313,50 @@
+ program.world1/prepare.enabled     = false
+ program.world1/setup.enabled       = COLORED_LIGHTS
+ program.world1/shadowcomp.enabled  = COLORED_LIGHTS
++
++# Separate Entity Draws
++#
++# These programs only exist on Iris 26.1+. Enabling them on older versions
++# makes translucent entities and blocks render incorrectly, so they are
++# disabled there and the dithered translucency fallback is used instead.
++# The values must be literal true/false: an undefined macro in these
++# expressions is ignored by the mod, which would leave the programs enabled.
++#ifdef USE_SEPARATE_ENTITY_DRAWS
++program.world0/gbuffers_entities_translucent.enabled    = true
++program.world0/gbuffers_block_translucent.enabled       = true
++program.world0/gbuffers_particles_translucent.enabled   = true
++program.world1/gbuffers_entities_translucent.enabled    = true
++program.world1/gbuffers_block_translucent.enabled       = true
++program.world1/gbuffers_particles_translucent.enabled   = true
++program.world-1/gbuffers_entities_translucent.enabled   = true
++program.world-1/gbuffers_block_translucent.enabled      = true
++program.world-1/gbuffers_particles_translucent.enabled  = true
++program.world_moon/gbuffers_entities_translucent.enabled  = true
++program.world_moon/gbuffers_block_translucent.enabled     = true
++program.world_moon/gbuffers_particles_translucent.enabled = true
++#else
++program.world0/gbuffers_entities_translucent.enabled    = false
++program.world0/gbuffers_block_translucent.enabled       = false
++program.world0/gbuffers_particles_translucent.enabled   = false
++program.world1/gbuffers_entities_translucent.enabled    = false
++program.world1/gbuffers_block_translucent.enabled       = false
++program.world1/gbuffers_particles_translucent.enabled   = false
++program.world-1/gbuffers_entities_translucent.enabled   = false
++program.world-1/gbuffers_block_translucent.enabled      = false
++program.world-1/gbuffers_particles_translucent.enabled  = false
++program.world_moon/gbuffers_entities_translucent.enabled  = false
++program.world_moon/gbuffers_block_translucent.enabled     = false
++program.world_moon/gbuffers_particles_translucent.enabled = false
++#endif
++
++# Particles are always drawn through a program that writes to the translucent
++# layer (colortex13) instead of the deferred gbuffer, so that their blending
++# and glow survive. Modded particles (e.g. Ars Nouveau ritual effects) rely on
++# this: as opaque deferred geometry they lose their blending entirely.
++program.world0/gbuffers_particles.enabled    = true
++program.world1/gbuffers_particles.enabled    = true
++program.world-1/gbuffers_particles.enabled   = true
++program.world_moon/gbuffers_particles.enabled = true
+ 
+ # Moon
+ 
+@@ -423,26 +470,26 @@
+ #   Blending
+ # ------------
+ 
+-alphaTest.dh_water                       = off
+-alphaTest.gbuffers_armor_glint           = off
+-alphaTest.gbuffers_basic                 = off
+-alphaTest.gbuffers_block                 = off
+-alphaTest.gbuffers_damagedblock          = off
+-alphaTest.gbuffers_entities              = off
+-alphaTest.gbuffers_hand                  = off
+-alphaTest.gbuffers_hand_water            = off
+-alphaTest.gbuffers_line                  = off
+-alphaTest.gbuffers_particles             = off
+-alphaTest.gbuffers_spidereyes            = off
+-alphaTest.gbuffers_skytextured           = off
+-alphaTest.gbuffers_terrain               = off
+-alphaTest.gbuffers_textured              = off
+-alphaTest.gbuffers_block_translucent     = off
+-alphaTest.gbuffers_entities_translucent  = off
+-alphaTest.gbuffers_particles_translucent = off
+-alphaTest.gbuffers_water                 = off
+-alphaTest.gbuffers_weather               = off
+-alphaTest.shadow                         = off
++# alphaTest.dh_water                       = off
++# alphaTest.gbuffers_armor_glint           = off
++# alphaTest.gbuffers_basic                 = off
++# alphaTest.gbuffers_block                 = off
++# alphaTest.gbuffers_damagedblock          = off
++# alphaTest.gbuffers_entities              = off
++# alphaTest.gbuffers_hand                  = off
++# alphaTest.gbuffers_hand_water            = off
++# alphaTest.gbuffers_line                  = off
++# alphaTest.gbuffers_particles             = off
++# alphaTest.gbuffers_spidereyes            = off
++# alphaTest.gbuffers_skytextured           = off
++# alphaTest.gbuffers_terrain               = off
++# alphaTest.gbuffers_textured              = off
++# alphaTest.gbuffers_block_translucent     = off
++# alphaTest.gbuffers_entities_translucent  = off
++# alphaTest.gbuffers_particles_translucent = off
++# alphaTest.gbuffers_water                 = off
++# alphaTest.gbuffers_weather               = off
++# alphaTest.shadow                         = off
+ 
+ blend.dh_water                       = off
+ blend.gbuffers_armor_glint           = off
+@@ -464,21 +511,24 @@
+ blend.gbuffers_weather               = off
+ blend.shadow                         = off
+ 
+-#ifndef IS_IRIS
+-blend.gbuffers_damagedblock          = off
++#ifdef USE_SEPARATE_ENTITY_DRAWS
++blend.gbuffers_armor_glint.colortex13 = ONE ONE ZERO ONE
++#else
++blend.gbuffers_armor_glint            = off
++blend.gbuffers_damagedblock           = off
+ #endif
+ 
+ blend.dh_water.colortex0                        = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+ blend.gbuffers_basic.colortex0                  = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+-blend.gbuffers_armor_glint.colortex13           = ONE ONE ZERO ONE
+ blend.dh_water.colortex13                       = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+ blend.gbuffers_water.colortex13                 = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+-blend.gbuffers_weather.colortex13               = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
++blend.gbuffers_weather.colortex13               = ONE ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+ blend.gbuffers_hand_water.colortex13            = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+-blend.gbuffers_textured.colortex13              = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
++blend.gbuffers_textured.colortex13              = ONE ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+ blend.gbuffers_entities_translucent.colortex13  = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+ blend.gbuffers_block_translucent.colortex13     = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+-blend.gbuffers_particles_translucent.colortex13 = SRC_ALPHA ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
++blend.gbuffers_particles.colortex13             = ONE ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
++blend.gbuffers_particles_translucent.colortex13 = ONE ONE_MINUS_SRC_ALPHA ONE ONE_MINUS_SRC_ALPHA
+ 
+ # -------------------
+ #   Custom Textures
+@@ -691,4 +741,4 @@
+ uniform.vec4.combined_projection_matrix_inverse_1 = vec4(0.0, tan(fov / 2.0), 0.0, 0.0)
+ uniform.vec4.combined_projection_matrix_inverse_2 = vec4(0.0, 0.0, 0.0, -(combined_far - combined_near) / (2.0 * combined_far * combined_near))
+ uniform.vec4.combined_projection_matrix_inverse_3 = vec4(0.0, 0.0, -1.0, (combined_far + combined_near) / (2.0 * combined_far * combined_near))
+-#endif
+\ No newline at end of file
++#endif
+--- a/shaders/world-1/gbuffers_particles.fsh
++++ b/shaders/world-1/gbuffers_particles.fsh
+@@ -2,4 +2,4 @@
+ #define WORLD_NETHER
+ #define PROGRAM_GBUFFERS_PARTICLES
+ #define fsh
+-#include "/program/gbuffers_all_solid.fsh"
++#include "/program/gbuffers_all_translucent.fsh"
+--- a/shaders/world-1/gbuffers_particles.vsh
++++ b/shaders/world-1/gbuffers_particles.vsh
+@@ -2,4 +2,4 @@
+ #define WORLD_NETHER
+ #define PROGRAM_GBUFFERS_PARTICLES
+ #define vsh
+-#include "/program/gbuffers_all_solid.vsh"
++#include "/program/gbuffers_all_translucent.vsh"
+--- a/shaders/world0/gbuffers_particles.fsh
++++ b/shaders/world0/gbuffers_particles.fsh
+@@ -2,4 +2,4 @@
+ #define WORLD_OVERWORLD
+ #define PROGRAM_GBUFFERS_PARTICLES
+ #define fsh
+-#include "/program/gbuffers_all_solid.fsh"
++#include "/program/gbuffers_all_translucent.fsh"
+--- a/shaders/world0/gbuffers_particles.vsh
++++ b/shaders/world0/gbuffers_particles.vsh
+@@ -2,4 +2,4 @@
+ #define WORLD_OVERWORLD
+ #define PROGRAM_GBUFFERS_PARTICLES
+ #define vsh
+-#include "/program/gbuffers_all_solid.vsh"
++#include "/program/gbuffers_all_translucent.vsh"
+--- a/shaders/world1/gbuffers_particles.fsh
++++ b/shaders/world1/gbuffers_particles.fsh
+@@ -2,4 +2,4 @@
+ #define WORLD_END
+ #define PROGRAM_GBUFFERS_PARTICLES
+ #define fsh
+-#include "/program/gbuffers_all_solid.fsh"
++#include "/program/gbuffers_all_translucent.fsh"
+--- a/shaders/world1/gbuffers_particles.vsh
++++ b/shaders/world1/gbuffers_particles.vsh
+@@ -2,4 +2,4 @@
+ #define WORLD_END
+ #define PROGRAM_GBUFFERS_PARTICLES
+ #define vsh
+-#include "/program/gbuffers_all_solid.vsh"
++#include "/program/gbuffers_all_translucent.vsh"
+--- a/shaders/world_moon/gbuffers_particles.fsh
++++ b/shaders/world_moon/gbuffers_particles.fsh
+@@ -2,4 +2,4 @@
+ #define WORLD_MOON
+ #define PROGRAM_GBUFFERS_PARTICLES
+ #define fsh
+-#include "/program/gbuffers_all_solid.fsh"
++#include "/program/gbuffers_all_translucent.fsh"
+--- a/shaders/world_moon/gbuffers_particles.vsh
++++ b/shaders/world_moon/gbuffers_particles.vsh
+@@ -2,4 +2,4 @@
+ #define WORLD_MOON
+ #define PROGRAM_GBUFFERS_PARTICLES
+ #define vsh
+-#include "/program/gbuffers_all_solid.vsh"
++#include "/program/gbuffers_all_translucent.vsh"

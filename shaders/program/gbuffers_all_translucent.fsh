@@ -144,8 +144,13 @@ uniform vec4 entityColor;
 	#undef SH_SKYLIGHT
 #endif
 
-#if defined PROGRAM_GBUFFERS_TEXTURED || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT
+#if defined PROGRAM_GBUFFERS_TEXTURED || defined PROGRAM_GBUFFERS_PARTICLES || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT
 	#define NO_NORMAL
+	// Premultiplied output, matching Photon 1.3. The blend function for these
+	// programs is ONE / ONE_MINUS_SRC_ALPHA, so the color has to carry its own
+	// alpha. This also makes the fog in-scattering term apply at full strength
+	// instead of being weighted by alpha again when the layer is composited.
+	#define PREMULTIPLIED_ALPHA
 #endif
 
 #ifdef DIRECTIONAL_LIGHTMAPS
@@ -398,8 +403,26 @@ void main() {
 
 	vec2 adjusted_light_levels = light_levels;
 
+#ifdef NO_NORMAL
+	// No normal vector => make one from screen-space partial derivatives
+	// NB: It is important to do this before the alpha discard, otherwise it creates issues on the
+	// outline of things
+	normal = normalize(cross(dFdx(position_scene), dFdy(position_scene)));
+#endif
+
 #if defined (PHYSICS_MOD_OCEAN) && defined (PHYSICS_OCEAN)
 	WavePixelData wave;
+#endif
+
+#if (defined PROGRAM_GBUFFERS_PARTICLES || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT) && PARTICLE_OCCLUSION == PARTICLE_OCCLUSION_ON
+	// This program writes to the translucent layer, which is composited on top
+	// of the scene without a depth test, so particles hidden behind solid
+	// geometry have to be rejected here. Some mods draw particle effects with
+	// depth testing disabled on purpose (Ars Nouveau's ritual helix effects,
+	// for example), which would otherwise shine through mobs and terrain.
+	// NB: this has to stay after the normal calculation above, discarding
+	// before the screen-space derivatives would make them undefined.
+	if (depth1 < gl_FragCoord.z - 1e-5) { discard; return; }
 #endif
 
 //------------------------------------------------------------------------//
@@ -455,9 +478,24 @@ void main() {
 		fragment_color.rgb = mix(fragment_color.rgb, entityColor.rgb, entityColor.a);
 #endif
 
-		if (fragment_color.a < 0.1) discard;
+#if defined PROGRAM_GBUFFERS_ENTITIES_TRANSLUCENT || defined PROGRAM_GBUFFERS_PARTICLES || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT || defined PROGRAM_GBUFFERS_BLOCK_TRANSLUCENT || defined PROGRAM_GBUFFERS_TEXTURED
+		if (material_mask != 102 && material_mask != 62) fragment_color.a *= TRANSLUCENT_ALPHA;
+#endif
 
-		material = material_from(fragment_color.rgb * fragment_color.a, material_mask, world_pos, tbn[2], adjusted_light_levels);
+		if (fragment_color.a < 0.1) { discard; return; }
+
+#if defined PROGRAM_GBUFFERS_PARTICLES
+		// Remove the little blue rain-splash dots, but only while it is actually
+		// raining under the open sky. This spares e.g. blue spell/ritual
+		// particles, which look similar but can run indoors or when it is dry.
+		if (rainStrength > 0.05 && light_levels.y > 0.1
+			&& fragment_color.r < 0.29 && fragment_color.g < 0.45 && fragment_color.b > 0.75) {
+			discard;
+			return;
+		}
+#endif
+
+		material = material_from(fragment_color.rgb, material_mask, world_pos, tbn[2], adjusted_light_levels);
 
 #if defined PROGRAM_GBUFFERS_LIGHTNING
 		// Lightning (since gbuffers_lightning)
@@ -467,7 +505,7 @@ void main() {
 
 		//--//
 
-#ifdef NORMAL_MAPPING
+#if defined NORMAL_MAPPING && !defined NO_NORMAL
 		float material_ao;
 		decode_normal_map(normal_map, normal_tangent, material_ao);
 
@@ -476,7 +514,7 @@ void main() {
 		adjusted_light_levels *= mix(0.7, 1.0, material_ao);
 
 	#ifdef DIRECTIONAL_LIGHTMAPS
-		adjusted_light_levels *= get_directional_lightmaps(normal);
+		adjusted_light_levels *= get_directional_lightmaps(position_scene, normal);
 	#endif
 #endif
 
@@ -484,12 +522,6 @@ void main() {
 		decode_specular_map(specular_map, material);
 #endif
 
-#ifdef NO_NORMAL
-		// No normal vector => make one from screen-space partial derivatives
-		normal = normalize(cross(dFdx(position_scene), dFdy(position_scene)));
-#endif
-
-		fragment_color.a = sqrt(fragment_color.a);
 	}
 
 #if defined (PHYSICS_MOD_OCEAN) && defined (PHYSICS_OCEAN)
@@ -595,13 +627,19 @@ void main() {
 	} 
 #endif 
 
-	fragment_color = vec4(fragment_color.rgb / max(fragment_color.a, eps), fragment_color.a);
+#ifdef PREMULTIPLIED_ALPHA
+	// Premultiply the surface color (diffuse + specular + reflections) before the
+	// fog is added. The blend function of these programs is ONE / ONE_MINUS_SRC_ALPHA,
+	// so the color has to carry its own alpha; premultiplying here instead of at
+	// the very end keeps the fog in-scattering term at full strength, which is
+	// what Photon 1.3 does.
+	fragment_color.rgb *= fragment_color.a;
+#endif
 
 	// Fog
 
 	vec4 fog = common_fog(length(position_scene), false);
 	fragment_color.rgb  = fragment_color.rgb * fog.a + fog.rgb;
-	fragment_color.a   *= border_fog(position_scene, direction_world);
 
 	// Purkinje shift
 
@@ -614,4 +652,3 @@ void main() {
 	refraction_data.zw = split_2x8(normal_tangent.y * 0.5 + 0.5);
 #endif
 }
-

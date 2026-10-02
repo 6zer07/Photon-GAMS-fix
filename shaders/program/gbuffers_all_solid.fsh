@@ -14,6 +14,10 @@
 layout (location = 0) out vec4 gbuffer_data_0; // albedo, block ID, flat normal, light levels
 layout (location = 1) out vec4 gbuffer_data_1; // detailed normal, specular map (optional)
 
+#ifdef PROGRAM_GBUFFERS_HAND
+layout (location = 2) out vec4 translucent_clear; // Clear the translucent overlay where the hand is drawn
+#endif
+
 /* RENDERTARGETS: 1 */
 
 #ifdef NORMAL_MAPPING
@@ -22,6 +26,10 @@ layout (location = 1) out vec4 gbuffer_data_1; // detailed normal, specular map 
 
 #ifdef SPECULAR_MAPPING
 /* RENDERTARGETS: 1,2 */
+#endif
+
+#ifdef PROGRAM_GBUFFERS_HAND
+/* RENDERTARGETS: 1,2,13 */
 #endif
 
 in vec2 uv;
@@ -81,6 +89,9 @@ uniform vec2 view_pixel_size;
 uniform vec2 taa_offset;
 
 uniform vec3 light_dir;
+
+uniform float alphaTestRef = 0.1;
+uniform float rainStrength;
 
 #if defined PROGRAM_GBUFFERS_ENTITIES
 uniform int entityId;
@@ -258,9 +269,21 @@ void main() {
 
 #if defined PROGRAM_GBUFFERS_ENTITIES
 	if (material_mask == 102) base_color = vec4(1.0);
-	if (base_color.a < 0.1 && material_mask != 101) { discard; return; } // Save transparent quad in boats, which masks out water
+	if (base_color.a < alphaTestRef && material_mask != 101) { discard; return; } // Save transparent quad in boats, which masks out water
 #elif !defined PROGRAM_GBUFFERS_TERRAIN_SOLID
-	if (base_color.a < 0.1) { discard; return; }
+	if (base_color.a < alphaTestRef) { discard; return; }
+#endif
+
+#if (defined PROGRAM_GBUFFERS_BLOCK || defined PROGRAM_GBUFFERS_ENTITIES) && !(defined USE_SEPARATE_ENTITY_DRAWS && defined IS_IRIS)
+	#ifdef DITHERED_TRANSLUCENCY_FALLBACK
+	// Dithered transparency for translucent objects rendered as solid
+	float dither_pattern = r1(
+		frameCounter, 
+		texelFetch(noisetex, ivec2(gl_FragCoord.xy) & 511, 0).z
+	);
+	float dither_alpha = base_color.a < 1.0 ? base_color.a * TRANSLUCENT_ALPHA : 1.0;
+	if (dither_alpha < dither_pattern) { discard; return; }
+	#endif
 #endif
 
 #ifdef WHITE_WORLD
@@ -304,7 +327,7 @@ void main() {
 	adjusted_light_levels *= mix(0.7, 1.0, material_ao);
 
 	#ifdef DIRECTIONAL_LIGHTMAPS
-	adjusted_light_levels *= get_directional_lightmaps(normal);
+	adjusted_light_levels *= get_directional_lightmaps(scene_pos, normal);
 	#endif
 #endif
 
@@ -349,8 +372,16 @@ void main() {
 #endif
 
 #if defined PROGRAM_GBUFFERS_PARTICLES
-	// Kill the little rain splash particles
-	if (base_color.r < 0.29 && base_color.g < 0.45 && base_color.b > 0.75) discard;
+	// Remove the little blue rain-splash dots, but only while it is actually
+	// raining under the open sky. This spares e.g. tap water drips, which look
+	// similar but can run indoors or when it is dry.
+	if (rainStrength > 0.05 && light_levels.y > 0.1
+		&& base_color.r < 0.29 && base_color.g < 0.45 && base_color.b > 0.75) discard;
+#endif
+
+#ifdef PROGRAM_GBUFFERS_HAND
+	// The hand renders after the world/particles; wherever it passes the depth test
+	// it is in front of the translucent layer, so erase particles/water behind it
+	translucent_clear = vec4(0.0);
 #endif
 }
-

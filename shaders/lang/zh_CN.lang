@@ -716,6 +716,16 @@ option.AIR_FOG_CLOUDY_NOISE            = 云雾
 option.AIR_FOG_CLOUDY_NOISE.comment    = 为雾气边缘添加微妙的云层形状, 在清晨更容易看清楚. 需要启用体积雾!
 option.AIR_FOG_COLORED_LIGHT_SHAFTS    = 光轴着色
 option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = 光轴穿过半透明事物时会被其颜色所沾染
+option.USE_SEPARATE_ENTITY_DRAWS       = 分离绘制实体
+option.USE_SEPARATE_ENTITY_DRAWS.comment = Iris 的一个功能: 对使用延迟-前向混合渲染的光影启用, 比如说 Photon, 用来使半透明实体和其他对象正确渲染. 但这个功能也会导致一些问题的出现. 禁用此功能可能会导致渲染问题, 例如半透明实体会变得不透明!(旗帜变白 篝火上的肉不渲染)
+option.DITHERED_TRANSLUCENCY_FALLBACK  = 抖动透明度回退
+option.DITHERED_TRANSLUCENCY_FALLBACK.comment = 在启用分离绘制实体时，使用抖动透明度来改善本应透明但无法透明的物体的外观，部分旗帜条纹正常显示.
+option.PUDDLE_MODE                     = 水坑模式
+option.PUDDLE_MODE.comment             = 选择水坑形态: 斑块水坑为原来的随机斑块效果, 全覆盖水坑在湿润时整片地面都湿透
+value.PUDDLE_MODE.PUDDLE_MODE_PATCHY   = 斑块水坑
+value.PUDDLE_MODE.PUDDLE_MODE_FULL     = 全覆盖水坑
+option.TRANSLUCENT_ALPHA               = 半透明贴图不透明度
+option.TRANSLUCENT_ALPHA.comment       = 控制半透明贴图(如模组实体翅膀)的不透明度, 数值越低越透明
 option.FOG_CLOUD_SHADOWS               = 云影光轴
 
 option.AIR_FOG_MIN_STEPS     = 雾气最小步进

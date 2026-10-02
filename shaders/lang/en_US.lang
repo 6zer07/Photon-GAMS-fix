@@ -772,6 +772,14 @@ option.AIR_FOG_CLOUDY_NOISE_DENSITY_MULTIPLIER = Cloudy Fog Density Multiplier
 option.AIR_FOG_CLOUDY_NOISE_DENSITY_MULTIPLIER.comment = Controls overall cloud density\n\nHigher values = denser/more opaque clouds
 option.AIR_FOG_COLORED_LIGHT_SHAFTS    = Colored Light Shafts
 option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = Light shafts passing through translucent objects are tinted by their color
+option.USE_SEPARATE_ENTITY_DRAWS       = Use "Separate Entity Draws"
+comment.USE_SEPARATE_ENTITY_DRAWS      = "separateEntityDraws" is an Iris feature enabling shaderpacks which use deferred-forward hybrid shading, like Photon, to correctly render translucent entities and other objects. However, it can be the cause of some issues. Expect rendering issues such as translucent entities becoming opaque if you disable this!
+option.PUDDLE_MODE                     = Puddle Mode
+option.PUDDLE_MODE.comment             = Choose the puddle shape: patchy keeps the original random puddles, full coverage wets the whole ground while wet
+value.PUDDLE_MODE.PUDDLE_MODE_PATCHY   = Patchy Puddles
+value.PUDDLE_MODE.PUDDLE_MODE_FULL     = Full Coverage
+option.TRANSLUCENT_ALPHA               = Translucent Texture Opacity
+option.TRANSLUCENT_ALPHA.comment       = Adjusts the opacity of translucent textures such as modded entity wings. Lower values make them more transparent
 option.FOG_CLOUD_SHADOWS               = Cloud Shadow Light Shafts
 
 option.AIR_FOG_MIN_STEPS     = Air Fog Min Steps
