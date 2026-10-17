@@ -105,7 +105,10 @@ void main() {
 
 #if defined PROGRAM_GBUFFERS_ENTITIES
 	// Fix fire entity not glowing with Colored Lights
-	if (light_levels.x > 0.99) material_mask = 40;
+	// only the 'Fire' entity group (entity.properties entity.10040) gets the orange
+	// emissive mask; the old test used light_levels.x > 0.99, so every entity standing
+	// in full block light was treated as an orange emissive
+	if (entityId == 10040) material_mask = 40;
 #endif
 
 #if defined PROGRAM_GBUFFERS_PARTICLES

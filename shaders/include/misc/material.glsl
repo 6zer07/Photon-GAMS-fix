@@ -609,7 +609,9 @@ Material material_from(vec3 albedo_srgb, uint material_mask, vec3 world_pos, vec
 						if (material_mask == 36u) { // 36
 							#ifdef HARDCODED_EMISSION
 							// Medium golden light
-							material.albedo = material.albedo * vec3(0.0) + float(material.albedo) * vec3(MEDIUM_GOLDEN_LIGHT_R, MEDIUM_GOLDEN_LIGHT_G, MEDIUM_GOLDEN_LIGHT_B);
+							// albedo replacement removed (golden): it tinted everything caught by this
+							// mask uniformly orange. Photon 1.3 only sets emission here.
+							// material.albedo = material.albedo * vec3(0.0) + float(material.albedo) * vec3(MEDIUM_GOLDEN_LIGHT_R, MEDIUM_GOLDEN_LIGHT_G, MEDIUM_GOLDEN_LIGHT_B);
 							material.emission  = 2.0 * sqr(albedo_sqrt) * linear_step(0.78, 0.85, hsl.z);
 
 							#if defined WORLD_END && defined END_COLORED_LIGHTING
@@ -652,7 +654,9 @@ Material material_from(vec3 albedo_srgb, uint material_mask, vec3 world_pos, vec
 						} else { // 39
 							#ifdef HARDCODED_EMISSION
 							// Lava
-							material.albedo = float(material.albedo) * vec3(LAVA_LIGHT_R, LAVA_LIGHT_G, LAVA_LIGHT_B);
+							// albedo replacement removed (lava): it tinted everything caught by this
+							// mask uniformly orange. Photon 1.3 only sets emission here.
+							// material.albedo = float(material.albedo) * vec3(LAVA_LIGHT_R, LAVA_LIGHT_G, LAVA_LIGHT_B);
 							material.emission = LAVA_EMISSION_I * (12 * albedo_sqrt * smoothstep(1.0, 0.6 ,hsl.y) * step(0.1, hsl.y) - 0.3 * albedo_sqrt * smoothstep(0.6, 1.0 ,hsl.y));
 
 							#if defined WORLD_END && defined END_COLORED_LIGHTING
@@ -670,7 +674,9 @@ Material material_from(vec3 albedo_srgb, uint material_mask, vec3 world_pos, vec
 						if (material_mask == 40u) { // 40
 							#ifdef HARDCODED_EMISSION
 							// Medium orange emissives
-							material.albedo = float(material.albedo) * vec3(MEDIUM_ORANGE_LIGHT_R, MEDIUM_ORANGE_LIGHT_G, MEDIUM_ORANGE_LIGHT_B);
+							// albedo replacement removed (medium orange): it tinted everything caught by this
+							// mask uniformly orange. Photon 1.3 only sets emission here.
+							// material.albedo = float(material.albedo) * vec3(MEDIUM_ORANGE_LIGHT_R, MEDIUM_ORANGE_LIGHT_G, MEDIUM_ORANGE_LIGHT_B);
 							//material.emission = 1.40 * sqr(albedo_srgb) * (0.1 + 0.9 * cube(hsl.z));
 							material.emission = 1.00 * sqr(albedo_srgb) * (0.9 * cube(hsl.z)) + sqr(albedo_sqrt) * smoothstep(0.80, 1.00, hsl.z);
 

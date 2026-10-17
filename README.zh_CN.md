@@ -1,6 +1,6 @@
 <br>
 
-<h1 align = "center">Photon GAMS — fixed (t12) · 中文说明</h1>
+<h1 align = "center">Photon GAMS — fixed (t13) · 中文说明</h1>
 
 <p align = "center">基于 <a href="https://github.com/OUdefie17/Photon-GAMS">OUdefie17/Photon-GAMS</a> 的社区修复分支</p>
 
@@ -10,14 +10,44 @@ English: [README.md](README.md)
 
 这是 **社区修复分支（fork）**。上游
 [OUdefie17/Photon-GAMS](https://github.com/OUdefie17/Photon-GAMS) 最后一次推送停留在
-**2025-03-30**，本分支在其基础上继续维护，`main` 分支携带 **t12** 修复集：共 **20 个着色器文件**
-被修改，逐条原因见 [CHANGELOG.md](CHANGELOG.md)。
+**2025-03-30**，本分支在其基础上继续维护，`main` 分支携带 **t13** 修复集：在 **t12** 之上又改了
+**7 个着色器文件**（四项修复：粒子遮挡判据、自发光不再替换 albedo、火焰实体判据、半透明不透明度语义），
+逐条原因见 [CHANGELOG.md](CHANGELOG.md)。
 
-除 `README.md`、`README.zh_CN.md`、`CHANGELOG.md`、`docs/t12-code-changes.patch` 四个新增/文档文件外，
-仓库内容与实测通过的光影包 **t12 逐字节一致**。
+除 `README.md`、`README.zh_CN.md`、`CHANGELOG.md`、`docs/t12-code-changes.patch` 与
+`docs/t13-code-changes.patch` 这些文档文件外，仓库内容与实测通过的光影包 **t13 逐字节一致**。
 
 * 逐文件改动记录：[CHANGELOG.md](CHANGELOG.md)
 * 相对上游 `main` 的原始补丁：[docs/t12-code-changes.patch](docs/t12-code-changes.patch)
+* `t13` 相对 `t12` 的补丁：[docs/t13-code-changes.patch](docs/t13-code-changes.patch)
+
+## t13 修了什么
+
+### 1. 粒子出现条纹 / 闪烁
+
+粒子的遮挡剔除原先直接比较原始深度（`depth1 < gl_FragCoord.z - 1e-5`）。当粒子与表面近似共面时，
+这个比较会逐像素翻转，看上去就是条纹。现在改为比较**视图空间距离**并留 0.1 格容差，共面处也能
+稳定地保留或剔除。
+
+### 2. 自发光物体不再丢失原本颜色
+
+硬编码自发光材质会把 albedo 整体替换成常量色
+（`material.albedo = float(albedo) * vec3(LAVA_LIGHT_* / MEDIUM_ORANGE_LIGHT_*)`），于是被命中的
+物体——包括整只实体——都被染成一片橙色、贴图颜色全丢。现在只设置 `emission`，这也正是 Photon 1.3
+的做法（1.3 里根本没有 albedo 替换）。
+
+### 3. 火焰实体的兜底不再误伤所有生物
+
+`gbuffers_all_solid.vsh` 里原先用 `if (light_levels.x > 0.99) material_mask = 40;` 让火焰实体发光。
+判据是"方块光满值"，因此**任何站在强光里的实体**都会被当成橙色自发光。现在改为按实体组判断
+（`entityId == 10040`，对应 `entity.properties` 的 Fire 组）。
+
+### 4. `TRANSLUCENT_ALPHA` 现在真的表示"不透明度"
+
+它原先是 `base_color.a * TRANSLUCENT_ALPHA`，所以 `1.00` 只是"按贴图 alpha 丢弃"，低 alpha 的实体
+贴图（翅膀、布料）怎么调都很透。现在改为 `mix(base_color.a, 1.0, TRANSLUCENT_ALPHA)`：
+`0.00` = 完全按贴图透明度（最透），`1.00` = 完全不透明。范围扩到 `0.00–1.00`，默认 `0.00`
+（保持原有观感）。只保留这一个选项，对实体与方块同时生效。
 
 ## t12 修了什么
 

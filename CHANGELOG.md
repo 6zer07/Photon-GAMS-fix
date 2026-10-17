@@ -4,11 +4,41 @@ All changes are relative to upstream [`OUdefie17/Photon-GAMS`](https://github.co
 at `main` (last upstream push 2025-03-30), which is based on
 [`sw-52/gluon`](https://github.com/sw-52/gluon) and [`sixthsurge/photon`](https://github.com/sixthsurge/photon).
 
-The raw diff of the current release is kept in
-[`docs/t12-code-changes.patch`](docs/t12-code-changes.patch); it applies with
+The raw diffs are kept in
+[`docs/t12-code-changes.patch`](docs/t12-code-changes.patch) (upstream `main` → `t12`) and
+[`docs/t13-code-changes.patch`](docs/t13-code-changes.patch) (`t12` → `t13`); both apply with
 `git apply -p1` (or `patch -p1`) from the repository root.
 
 ---
+
+## t13 — 2026-10-17
+
+**7 files, +29 / −11 lines** on top of `t12`. Verified by re-applying the patch to `t12`: the result is
+byte-for-byte identical to the tested `t13` build.
+
+### Fixed
+
+* **Striped / flickering particles.** The occlusion test in `gbuffers_all_translucent.fsh` compared
+  raw depth (`depth1 < gl_FragCoord.z - 1e-5`). Where a particle is nearly coplanar with a surface the
+  comparison flips per pixel, which shows up as stripes. It now compares view-space distances with a
+  0.1 block tolerance.
+* **Emissive objects tinted uniformly orange.** The hardcoded emissive materials (`material_mask` 39
+  lava, 40 medium orange, and the golden branch) replaced the albedo with a constant colour
+  (`material.albedo = float(albedo) * vec3(LAVA_LIGHT_* / MEDIUM_ORANGE_LIGHT_*)`), discarding the
+  object's own texture colours — whole entities included. Only `emission` is set now, matching Photon
+  1.3, whose material shader has no albedo replacement at all.
+* **Fire-entity workaround matched every mob in bright light.** `gbuffers_all_solid.vsh` used
+  `if (light_levels.x > 0.99) material_mask = 40;`, so any entity standing in full block light was
+  treated as an orange emissive. It now tests the Fire entity group (`entityId == 10040`, matching
+  `entity.properties`).
+
+### Changed
+
+* **`TRANSLUCENT_ALPHA` semantics.** Was `base_color.a * TRANSLUCENT_ALPHA`, so `1.00` only meant
+  "follow the texture alpha" and low-alpha entity textures (wings, cloth) stayed nearly invisible at
+  any setting. Is now `mix(base_color.a, 1.0, TRANSLUCENT_ALPHA)`: `0.00` follows the texture alpha
+  (most translucent), `1.00` is fully opaque. Range widened to `0.00–1.00`; default lowered to `0.00`,
+  which keeps the previous look. A single option, applied to entities and blocks alike.
 
 ## t12 — 2026-09-10
 

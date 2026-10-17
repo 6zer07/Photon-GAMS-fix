@@ -281,7 +281,10 @@ void main() {
 		frameCounter, 
 		texelFetch(noisetex, ivec2(gl_FragCoord.xy) & 511, 0).z
 	);
-	float dither_alpha = base_color.a < 1.0 ? base_color.a * TRANSLUCENT_ALPHA : 1.0;
+// One knob for entities and blocks alike: 0.00 = follow the texture alpha (most
+	// translucent), 1.00 = no dithering at all (solid). Entity textures often carry low
+	// alpha (wings, cloth, ...), so at low values they stay nearly invisible.
+	float dither_alpha = mix(base_color.a, 1.0, TRANSLUCENT_ALPHA);
 	if (dither_alpha < dither_pattern) { discard; return; }
 	#endif
 #endif

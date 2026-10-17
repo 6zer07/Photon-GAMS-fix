@@ -724,8 +724,8 @@ option.PUDDLE_MODE                     = 水坑模式
 option.PUDDLE_MODE.comment             = 选择水坑形态: 斑块水坑为原来的随机斑块效果, 全覆盖水坑在湿润时整片地面都湿透
 value.PUDDLE_MODE.PUDDLE_MODE_PATCHY   = 斑块水坑
 value.PUDDLE_MODE.PUDDLE_MODE_FULL     = 全覆盖水坑
-option.TRANSLUCENT_ALPHA               = 半透明贴图不透明度
-option.TRANSLUCENT_ALPHA.comment       = 控制半透明贴图(如模组实体翅膀)的不透明度, 数值越低越透明
+option.TRANSLUCENT_ALPHA = 半透明贴图不透明度
+option.TRANSLUCENT_ALPHA.comment = 半透明贴图的不透明度. 0.00 = 完全按贴图透明度(最透), 1.00 = 完全不透明(最实). 本选项对实体与方块(玻璃、冰、旗帜)同时生效.
 option.FOG_CLOUD_SHADOWS               = 云影光轴
 
 option.AIR_FOG_MIN_STEPS     = 雾气最小步进

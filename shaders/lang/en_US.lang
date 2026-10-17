@@ -778,8 +778,8 @@ option.PUDDLE_MODE                     = Puddle Mode
 option.PUDDLE_MODE.comment             = Choose the puddle shape: patchy keeps the original random puddles, full coverage wets the whole ground while wet
 value.PUDDLE_MODE.PUDDLE_MODE_PATCHY   = Patchy Puddles
 value.PUDDLE_MODE.PUDDLE_MODE_FULL     = Full Coverage
-option.TRANSLUCENT_ALPHA               = Translucent Texture Opacity
-option.TRANSLUCENT_ALPHA.comment       = Adjusts the opacity of translucent textures such as modded entity wings. Lower values make them more transparent
+option.TRANSLUCENT_ALPHA = Translucent Texture Opacity
+option.TRANSLUCENT_ALPHA.comment = Opacity of translucent textures. 0.00 = follow the texture alpha (most translucent), 1.00 = fully opaque. Applies to both entities and blocks such as glass, ice and banners.
 option.FOG_CLOUD_SHADOWS               = Cloud Shadow Light Shafts
 
 option.AIR_FOG_MIN_STEPS     = Air Fog Min Steps

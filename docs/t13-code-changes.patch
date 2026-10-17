@@ -1,0 +1,117 @@
+--- a/shaders/include/misc/material.glsl
++++ b/shaders/include/misc/material.glsl
+@@ -609,7 +609,9 @@
+ 						if (material_mask == 36u) { // 36
+ 							#ifdef HARDCODED_EMISSION
+ 							// Medium golden light
+-							material.albedo = material.albedo * vec3(0.0) + float(material.albedo) * vec3(MEDIUM_GOLDEN_LIGHT_R, MEDIUM_GOLDEN_LIGHT_G, MEDIUM_GOLDEN_LIGHT_B);
++							// albedo replacement removed (golden): it tinted everything caught by this
++							// mask uniformly orange. Photon 1.3 only sets emission here.
++							// material.albedo = material.albedo * vec3(0.0) + float(material.albedo) * vec3(MEDIUM_GOLDEN_LIGHT_R, MEDIUM_GOLDEN_LIGHT_G, MEDIUM_GOLDEN_LIGHT_B);
+ 							material.emission  = 2.0 * sqr(albedo_sqrt) * linear_step(0.78, 0.85, hsl.z);
+ 
+ 							#if defined WORLD_END && defined END_COLORED_LIGHTING
+@@ -652,7 +654,9 @@
+ 						} else { // 39
+ 							#ifdef HARDCODED_EMISSION
+ 							// Lava
+-							material.albedo = float(material.albedo) * vec3(LAVA_LIGHT_R, LAVA_LIGHT_G, LAVA_LIGHT_B);
++							// albedo replacement removed (lava): it tinted everything caught by this
++							// mask uniformly orange. Photon 1.3 only sets emission here.
++							// material.albedo = float(material.albedo) * vec3(LAVA_LIGHT_R, LAVA_LIGHT_G, LAVA_LIGHT_B);
+ 							material.emission = LAVA_EMISSION_I * (12 * albedo_sqrt * smoothstep(1.0, 0.6 ,hsl.y) * step(0.1, hsl.y) - 0.3 * albedo_sqrt * smoothstep(0.6, 1.0 ,hsl.y));
+ 
+ 							#if defined WORLD_END && defined END_COLORED_LIGHTING
+@@ -670,7 +674,9 @@
+ 						if (material_mask == 40u) { // 40
+ 							#ifdef HARDCODED_EMISSION
+ 							// Medium orange emissives
+-							material.albedo = float(material.albedo) * vec3(MEDIUM_ORANGE_LIGHT_R, MEDIUM_ORANGE_LIGHT_G, MEDIUM_ORANGE_LIGHT_B);
++							// albedo replacement removed (medium orange): it tinted everything caught by this
++							// mask uniformly orange. Photon 1.3 only sets emission here.
++							// material.albedo = float(material.albedo) * vec3(MEDIUM_ORANGE_LIGHT_R, MEDIUM_ORANGE_LIGHT_G, MEDIUM_ORANGE_LIGHT_B);
+ 							//material.emission = 1.40 * sqr(albedo_srgb) * (0.1 + 0.9 * cube(hsl.z));
+ 							material.emission = 1.00 * sqr(albedo_srgb) * (0.9 * cube(hsl.z)) + sqr(albedo_sqrt) * smoothstep(0.80, 1.00, hsl.z);
+ 
+--- a/shaders/lang/en_US.lang
++++ b/shaders/lang/en_US.lang
+@@ -778,8 +778,8 @@
+ option.PUDDLE_MODE.comment             = Choose the puddle shape: patchy keeps the original random puddles, full coverage wets the whole ground while wet
+ value.PUDDLE_MODE.PUDDLE_MODE_PATCHY   = Patchy Puddles
+ value.PUDDLE_MODE.PUDDLE_MODE_FULL     = Full Coverage
+-option.TRANSLUCENT_ALPHA               = Translucent Texture Opacity
+-option.TRANSLUCENT_ALPHA.comment       = Adjusts the opacity of translucent textures such as modded entity wings. Lower values make them more transparent
++option.TRANSLUCENT_ALPHA = Translucent Texture Opacity
++option.TRANSLUCENT_ALPHA.comment = Opacity of translucent textures. 0.00 = follow the texture alpha (most translucent), 1.00 = fully opaque. Applies to both entities and blocks such as glass, ice and banners.
+ option.FOG_CLOUD_SHADOWS               = Cloud Shadow Light Shafts
+ 
+ option.AIR_FOG_MIN_STEPS     = Air Fog Min Steps
+--- a/shaders/lang/zh_CN.lang
++++ b/shaders/lang/zh_CN.lang
+@@ -724,8 +724,8 @@
+ option.PUDDLE_MODE.comment             = 选择水坑形态: 斑块水坑为原来的随机斑块效果, 全覆盖水坑在湿润时整片地面都湿透
+ value.PUDDLE_MODE.PUDDLE_MODE_PATCHY   = 斑块水坑
+ value.PUDDLE_MODE.PUDDLE_MODE_FULL     = 全覆盖水坑
+-option.TRANSLUCENT_ALPHA               = 半透明贴图不透明度
+-option.TRANSLUCENT_ALPHA.comment       = 控制半透明贴图(如模组实体翅膀)的不透明度, 数值越低越透明
++option.TRANSLUCENT_ALPHA = 半透明贴图不透明度
++option.TRANSLUCENT_ALPHA.comment = 半透明贴图的不透明度. 0.00 = 完全按贴图透明度(最透), 1.00 = 完全不透明(最实). 本选项对实体与方块(玻璃、冰、旗帜)同时生效.
+ option.FOG_CLOUD_SHADOWS               = 云影光轴
+ 
+ option.AIR_FOG_MIN_STEPS     = 雾气最小步进
+--- a/shaders/program/gbuffers_all_solid.fsh
++++ b/shaders/program/gbuffers_all_solid.fsh
+@@ -281,7 +281,10 @@
+ 		frameCounter, 
+ 		texelFetch(noisetex, ivec2(gl_FragCoord.xy) & 511, 0).z
+ 	);
+-	float dither_alpha = base_color.a < 1.0 ? base_color.a * TRANSLUCENT_ALPHA : 1.0;
++// One knob for entities and blocks alike: 0.00 = follow the texture alpha (most
++	// translucent), 1.00 = no dithering at all (solid). Entity textures often carry low
++	// alpha (wings, cloth, ...), so at low values they stay nearly invisible.
++	float dither_alpha = mix(base_color.a, 1.0, TRANSLUCENT_ALPHA);
+ 	if (dither_alpha < dither_pattern) { discard; return; }
+ 	#endif
+ #endif
+--- a/shaders/program/gbuffers_all_solid.vsh
++++ b/shaders/program/gbuffers_all_solid.vsh
+@@ -105,7 +105,10 @@
+ 
+ #if defined PROGRAM_GBUFFERS_ENTITIES
+ 	// Fix fire entity not glowing with Colored Lights
+-	if (light_levels.x > 0.99) material_mask = 40;
++	// only the 'Fire' entity group (entity.properties entity.10040) gets the orange
++	// emissive mask; the old test used light_levels.x > 0.99, so every entity standing
++	// in full block light was treated as an orange emissive
++	if (entityId == 10040) material_mask = 40;
+ #endif
+ 
+ #if defined PROGRAM_GBUFFERS_PARTICLES
+--- a/shaders/program/gbuffers_all_translucent.fsh
++++ b/shaders/program/gbuffers_all_translucent.fsh
+@@ -422,7 +422,13 @@
+ 	// for example), which would otherwise shine through mobs and terrain.
+ 	// NB: this has to stay after the normal calculation above, discarding
+ 	// before the screen-space derivatives would make them undefined.
+-	if (depth1 < gl_FragCoord.z - 1e-5) { discard; return; }
++	// Compare view-space distances with a tolerance instead of raw depth values.
++	// The old test compared gl_FragCoord.z against the depth attachment with a
++	// 1e-5 epsilon; where a particle is nearly coplanar with a surface the two
++	// values round differently per pixel, which punched visible stripes into the
++	// particle. A 0.1 block tolerance keeps particles that are clearly behind
++	// solid geometry hidden without that flicker.
++	if (-position_view.z > -view_back_pos.z + 0.1) { discard; return; }
+ #endif
+ 
+ //------------------------------------------------------------------------//
+--- a/shaders/settings.glsl
++++ b/shaders/settings.glsl
+@@ -626,7 +626,7 @@
+   #define PUDDLE_MODE_FULL   1
+   #define PUDDLE_MODE PUDDLE_MODE_FULL // [PUDDLE_MODE_PATCHY PUDDLE_MODE_FULL]
+ 
+-  #define TRANSLUCENT_ALPHA 0.75 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
++  #define TRANSLUCENT_ALPHA 0.00 // [0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
+ 
+   // Particles that are hidden behind solid geometry are discarded. Some mods
+   // draw particle effects with depth testing disabled on purpose (Ars Nouveau's

@@ -1,6 +1,6 @@
 <br><br>
 
-<h1 align = "center">Photon GAMS — fixed (t12)</h1>
+<h1 align = "center">Photon GAMS — fixed (t13)</h1>
 
 <p align = "center">A gameplay-focused shader pack for Minecraft, community-fixed fork of
 <a href="https://github.com/OUdefie17/Photon-GAMS">OUdefie17/Photon-GAMS</a></p>
@@ -14,14 +14,48 @@ This repository is a **community-fixed fork**. It continues
 2025-03-30), which in turn is based on [sw-52/gluon](https://github.com/sw-52/gluon) and
 [sixthsurge/photon](https://github.com/sixthsurge/photon).
 
-This fork's `main` branch carries the **t12** fix set: 20 shader files changed, all of them listed
-below with their reason. Everything outside `README.md`, `README.zh_CN.md`, `CHANGELOG.md` and
-`docs/t12-code-changes.patch` is **byte-identical to the tested `t12` build** — no other file was
-touched.
+This fork's `main` branch carries the **t13** fix set: **7 shader files** changed on top of `t12`, for
+four fixes (particle occlusion tolerance, emissive albedo, fire-entity material mask, translucent
+opacity semantics). Everything outside `README.md`, `README.zh_CN.md`, `CHANGELOG.md`,
+`docs/t12-code-changes.patch` and `docs/t13-code-changes.patch` is **byte-identical to the tested
+`t13` build** — no other file was touched.
 
 * Full per-file history: [CHANGELOG.md](CHANGELOG.md)
 * Raw unified diff against upstream `main`: [docs/t12-code-changes.patch](docs/t12-code-changes.patch)
+* Raw unified diff of `t13` on top of `t12`: [docs/t13-code-changes.patch](docs/t13-code-changes.patch)
 * 中文说明: [README.zh_CN.md](README.zh_CN.md)
+
+## What t13 fixes
+
+### 1. Striped / flickering particles
+
+The particle occlusion test compared raw depth values (`depth1 < gl_FragCoord.z - 1e-5`). Where a
+particle is nearly coplanar with a surface, that comparison flips from pixel to pixel and shows up as
+stripes. It now compares **view-space distances** with a 0.1 block tolerance, so coplanar particles
+are kept or rejected consistently.
+
+### 2. Emissive objects no longer lose their colours
+
+The hardcoded emissive materials replaced the albedo with a constant colour
+(`material.albedo = float(albedo) * vec3(LAVA_LIGHT_* / MEDIUM_ORANGE_LIGHT_*)`), so anything matched
+by those branches was tinted uniformly orange and its texture colours were discarded — full entities
+included. Only `emission` is set now, which is also what Photon 1.3 does (it has no albedo
+replacement at all).
+
+### 3. The fire-entity workaround no longer hits every mob
+
+`gbuffers_all_solid.vsh` used `if (light_levels.x > 0.99) material_mask = 40;` to make fire entities
+glow. Because the test was "full block light", **any entity standing in bright light** was treated as
+an orange emissive. It now checks the Fire entity group (`entityId == 10040`, matching
+`entity.properties`).
+
+### 4. `TRANSLUCENT_ALPHA` actually means opacity now
+
+It used to be `base_color.a * TRANSLUCENT_ALPHA`, so `1.00` merely followed the texture alpha — low-alpha
+entity textures (wings, cloth) stayed almost invisible no matter what. It is now
+`mix(base_color.a, 1.0, TRANSLUCENT_ALPHA)`: `0.00` follows the texture alpha (most translucent),
+`1.00` is fully opaque. The range was widened to `0.00–1.00` and the default lowered to `0.00`, which
+keeps the previous look. One option, applied to entities and blocks alike.
 
 ## What t12 fixes
 

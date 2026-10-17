@@ -626,7 +626,7 @@ const float wetnessHalflife         = 70.0;
   #define PUDDLE_MODE_FULL   1
   #define PUDDLE_MODE PUDDLE_MODE_FULL // [PUDDLE_MODE_PATCHY PUDDLE_MODE_FULL]
 
-  #define TRANSLUCENT_ALPHA 0.75 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
+  #define TRANSLUCENT_ALPHA 0.00 // [0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00]
 
   // Particles that are hidden behind solid geometry are discarded. Some mods
   // draw particle effects with depth testing disabled on purpose (Ars Nouveau's

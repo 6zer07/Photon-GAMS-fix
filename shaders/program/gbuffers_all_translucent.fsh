@@ -422,7 +422,13 @@ void main() {
 	// for example), which would otherwise shine through mobs and terrain.
 	// NB: this has to stay after the normal calculation above, discarding
 	// before the screen-space derivatives would make them undefined.
-	if (depth1 < gl_FragCoord.z - 1e-5) { discard; return; }
+	// Compare view-space distances with a tolerance instead of raw depth values.
+	// The old test compared gl_FragCoord.z against the depth attachment with a
+	// 1e-5 epsilon; where a particle is nearly coplanar with a surface the two
+	// values round differently per pixel, which punched visible stripes into the
+	// particle. A 0.1 block tolerance keeps particles that are clearly behind
+	// solid geometry hidden without that flicker.
+	if (-position_view.z > -view_back_pos.z + 0.1) { discard; return; }
 #endif
 
 //------------------------------------------------------------------------//
