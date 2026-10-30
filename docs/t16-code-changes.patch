@@ -1,0 +1,35 @@
+--- a/shaders/program/gbuffers_all_solid.fsh
++++ b/shaders/program/gbuffers_all_solid.fsh
+@@ -15,7 +15,8 @@
+ layout (location = 1) out vec4 gbuffer_data_1; // detailed normal, specular map (optional)
+ 
+ #ifdef PROGRAM_GBUFFERS_HAND
+-layout (location = 2) out vec4 translucent_clear; // Clear the translucent overlay where the hand is drawn
++layout (location = 2) out vec4 overlay_clear;     // Clear the block-breaking overlay / glint where the hand is drawn
++layout (location = 3) out vec4 translucent_clear; // Clear the translucent overlay where the hand is drawn
+ #endif
+ 
+ /* RENDERTARGETS: 1 */
+@@ -29,7 +30,7 @@
+ #endif
+ 
+ #ifdef PROGRAM_GBUFFERS_HAND
+-/* RENDERTARGETS: 1,2,13 */
++/* RENDERTARGETS: 1,2,3,13 */
+ #endif
+ 
+ in vec2 uv;
+@@ -383,8 +384,11 @@
+ #endif
+ 
+ #ifdef PROGRAM_GBUFFERS_HAND
+-	// The hand renders after the world/particles; wherever it passes the depth test
+-	// it is in front of the translucent layer, so erase particles/water behind it
++	// The hand renders after the world/particles; wherever it passes the depth test it is in
++	// front of the translucent layer *and* of the block-breaking overlay, so erase both behind it.
++	// (Without the overlay_clear, d4 would still apply the breaking overlay stored in colortex3
++	// to the hand pixels and paint the cracks onto the arm.)
++	overlay_clear     = vec4(0.0);
+ 	translucent_clear = vec4(0.0);
+ #endif
+ }

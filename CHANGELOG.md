@@ -5,11 +5,48 @@ at `main` (last upstream push 2025-03-30), which is based on
 [`sw-52/gluon`](https://github.com/sw-52/gluon) and [`sixthsurge/photon`](https://github.com/sixthsurge/photon).
 
 The raw diffs are kept in
-[`docs/t12-code-changes.patch`](docs/t12-code-changes.patch) (upstream `main` → `t12`) and
-[`docs/t13-code-changes.patch`](docs/t13-code-changes.patch) (`t12` → `t13`); both apply with
-`git apply -p1` (or `patch -p1`) from the repository root.
+[`docs/t12-code-changes.patch`](docs/t12-code-changes.patch) (upstream `main` → `t12`),
+[`docs/t13-code-changes.patch`](docs/t13-code-changes.patch) (`t12` → `t13`),
+[`docs/t14-code-changes.patch`](docs/t14-code-changes.patch) (`t13` → `t14`) and
+[`docs/t16-code-changes.patch`](docs/t16-code-changes.patch) (`t14` → `t16`); they apply **in order**
+with `git apply -p1` (or `patch -p1`) from the repository root.
+
+Per-version development logs live in [`docs/logs/`](docs/logs/); the overview is
+[`docs/history-index.md`](docs/history-index.md).
 
 ---
+
+## t16 — 2026-10-19
+
+**1 file, +8 / −4 lines** on top of `t14`. Fixes the block-breaking overlay bleeding onto the hand.
+
+### Fixed
+
+* **Block-breaking cracks were painted onto the first-person arm.** The overlay is written to
+  `colortex3` with `alpha = 1/255` (`overlay_id == 1`) and merged in `d4_deferred_shading.fsh` with
+  `albedo = 2.0 * albedo * overlays.rgb`, which is applied to **every** pixel — so when the hand was
+  drawn in front of a block that was being broken, the hand pixels still received that overlay. The hand
+  program now clears `colortex3` where it passes the depth test, exactly like it already clears
+  `colortex13` for particles/water (`RENDERTARGETS: 1,2,3,13`, new `overlay_clear` output).
+* Note: the "obvious" fix — restoring upstream's `#ifdef IS_IRIS` branch, which writes `colortex0` —
+  makes the cracks **disappear entirely**. In this pack `colortex0` is the scene colour and the gbuffer
+  albedo lives in `colortex1`, so nothing reads that write. Do not "fix" it that way (see
+  `docs/logs/t15.md`).
+
+## t14 — 2026-10-17
+
+**1 file, +5 / −0 lines** on top of `t13`. Published as its own version because `t13` had already been
+uploaded without it.
+
+### Fixed
+
+* **Water and other translucent surfaces ignored fog.** While `t12` switched the translucent programs to
+  premultiplied alpha, it also dropped
+  `fragment_color.a *= border_fog(position_scene, direction_world);`. That term fades distant
+  translucent surfaces (water, ice, banners) out towards the horizon; without it, far water stayed
+  fully opaque on top of a scene whose terrain was already washed out by fog. Restored **before**
+  premultiplication, so the premultiplied colour carries the fog-faded alpha (`common_fog()` only takes
+  the view distance, so the placement is equivalent to upstream's "fade the alpha after fog").
 
 ## t13 — 2026-10-17
 

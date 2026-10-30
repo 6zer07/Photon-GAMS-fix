@@ -1,0 +1,14 @@
+--- a/shaders/program/gbuffers_all_translucent.fsh
++++ b/shaders/program/gbuffers_all_translucent.fsh
+@@ -633,6 +633,11 @@
+ 	} 
+ #endif 
+ 
++	// Fade distant translucent surfaces out *before* premultiplying: the premultiplied
++	// colour below has to carry the fog-faded alpha, otherwise far water, ice and
++	// banners stay opaque inside fog instead of blending into it.
++	fragment_color.a *= border_fog(position_scene, direction_world);
++
+ #ifdef PREMULTIPLIED_ALPHA
+ 	// Premultiply the surface color (diffuse + specular + reflections) before the
+ 	// fog is added. The blend function of these programs is ONE / ONE_MINUS_SRC_ALPHA,

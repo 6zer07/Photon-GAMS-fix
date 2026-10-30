@@ -1,6 +1,6 @@
 <br><br>
 
-<h1 align = "center">Photon GAMS — fixed (t13)</h1>
+<h1 align = "center">Photon GAMS — fixed (t16)</h1>
 
 <p align = "center">A gameplay-focused shader pack for Minecraft, community-fixed fork of
 <a href="https://github.com/OUdefie17/Photon-GAMS">OUdefie17/Photon-GAMS</a></p>
@@ -14,16 +14,48 @@ This repository is a **community-fixed fork**. It continues
 2025-03-30), which in turn is based on [sw-52/gluon](https://github.com/sw-52/gluon) and
 [sixthsurge/photon](https://github.com/sixthsurge/photon).
 
-This fork's `main` branch carries the **t13** fix set: **7 shader files** changed on top of `t12`, for
-four fixes (particle occlusion tolerance, emissive albedo, fire-entity material mask, translucent
-opacity semantics). Everything outside `README.md`, `README.zh_CN.md`, `CHANGELOG.md`,
-`docs/t12-code-changes.patch` and `docs/t13-code-changes.patch` is **byte-identical to the tested
-`t13` build** — no other file was touched.
+This fork's `main` branch carries the **t16** fix set: **7 shader files** changed on top of `t12`.
+Every step builds on the previous one and is verified by re-applying its patch:
+
+| version | what | size |
+| --- | --- | --- |
+| `t13` | particle occlusion tolerance, emissive albedo, fire-entity mask, translucent opacity | 7 files, +29 / −11 |
+| `t14` | translucent surfaces fade into fog again | 1 file, +5 / −0 |
+| `t16` | block-breaking overlay no longer bleeds onto the hand | 1 file, +8 / −4 |
+
+Everything outside `README.md`, `README.zh_CN.md`, `CHANGELOG.md`, the four `docs/t*-code-changes.patch`
+files and `docs/logs/` is **byte-identical to the tested `t16` build** — no other file was touched.
 
 * Full per-file history: [CHANGELOG.md](CHANGELOG.md)
+* Development logs: [docs/logs/](docs/logs/) · overview: [docs/history-index.md](docs/history-index.md)
 * Raw unified diff against upstream `main`: [docs/t12-code-changes.patch](docs/t12-code-changes.patch)
-* Raw unified diff of `t13` on top of `t12`: [docs/t13-code-changes.patch](docs/t13-code-changes.patch)
+* `t13` on top of `t12`: [docs/t13-code-changes.patch](docs/t13-code-changes.patch)
+* `t14` on top of `t13`: [docs/t14-code-changes.patch](docs/t14-code-changes.patch)
+* `t16` on top of `t14`: [docs/t16-code-changes.patch](docs/t16-code-changes.patch)
 * 中文说明: [README.zh_CN.md](README.zh_CN.md)
+
+## What t16 fixes
+
+### The block-breaking overlay no longer bleeds onto the hand
+
+The breaking overlay is stored in `colortex3` (encoded as `alpha = 1/255`) and merged in the deferred
+pass with `albedo = 2.0 * albedo * overlays.rgb` — unconditionally, for every pixel. When the
+first-person hand was drawn in front of a block that was being broken, the hand pixels still received
+that overlay, so the cracks appeared on the arm. The hand program now clears `colortex3` wherever it
+passes the depth test, mirroring the `colortex13` clear that `t12` added for particles and water.
+
+Note for maintainers: restoring upstream's `#ifdef IS_IRIS` variant (writing `colortex0`) makes the
+cracks disappear completely, because this pack keeps the gbuffer albedo in `colortex1` and
+`colortex0` is the scene colour.
+
+## What t14 fixes
+
+### Water and translucent surfaces fade into fog again
+
+`t12` dropped `fragment_color.a *= border_fog(position_scene, direction_world);` while rewriting the
+end of the translucent program, so distant water (and ice, banners) kept its full opacity and stayed
+crisp on top of a fogged scene whose terrain was washed out. The fade-out is restored and applied
+**before** premultiplication, so the premultiplied colour carries the fog-faded alpha.
 
 ## What t13 fixes
 

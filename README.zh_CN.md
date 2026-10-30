@@ -1,6 +1,6 @@
 <br>
 
-<h1 align = "center">Photon GAMS — fixed (t13) · 中文说明</h1>
+<h1 align = "center">Photon GAMS — fixed (t16) · 中文说明</h1>
 
 <p align = "center">基于 <a href="https://github.com/OUdefie17/Photon-GAMS">OUdefie17/Photon-GAMS</a> 的社区修复分支</p>
 
@@ -10,16 +10,44 @@ English: [README.md](README.md)
 
 这是 **社区修复分支（fork）**。上游
 [OUdefie17/Photon-GAMS](https://github.com/OUdefie17/Photon-GAMS) 最后一次推送停留在
-**2025-03-30**，本分支在其基础上继续维护，`main` 分支携带 **t13** 修复集：在 **t12** 之上又改了
-**7 个着色器文件**（四项修复：粒子遮挡判据、自发光不再替换 albedo、火焰实体判据、半透明不透明度语义），
-逐条原因见 [CHANGELOG.md](CHANGELOG.md)。
+**2025-03-30**，本分支在其基础上继续维护，`main` 分支携带 **t16** 修复集：在 **t12** 之上共改了
+**7 个着色器文件**。每一步都建立在前一步之上，并都有补丁可复现：
 
-除 `README.md`、`README.zh_CN.md`、`CHANGELOG.md`、`docs/t12-code-changes.patch` 与
-`docs/t13-code-changes.patch` 这些文档文件外，仓库内容与实测通过的光影包 **t13 逐字节一致**。
+| 版本 | 内容 | 规模 |
+| --- | --- | --- |
+| `t13` | 粒子遮挡判据、自发光不再替换 albedo、火焰实体判据、半透明不透明度语义 | 7 文件，+29 / −11 |
+| `t14` | 半透明表面重新融入雾气 | 1 文件，+5 / −0 |
+| `t16` | 破坏方块裂纹不再印到手臂上 | 1 文件，+8 / −4 |
+
+除 `README.md`、`README.zh_CN.md`、`CHANGELOG.md`、四个 `docs/t*-code-changes.patch` 与 `docs/logs/`
+这些文档文件外，仓库内容与实测通过的光影包 **t16 逐字节一致**。
 
 * 逐文件改动记录：[CHANGELOG.md](CHANGELOG.md)
+* 开发日志：[docs/logs/](docs/logs/) · 版本总览：[docs/history-index.md](docs/history-index.md)
 * 相对上游 `main` 的原始补丁：[docs/t12-code-changes.patch](docs/t12-code-changes.patch)
-* `t13` 相对 `t12` 的补丁：[docs/t13-code-changes.patch](docs/t13-code-changes.patch)
+* `t13` 相对 `t12`：[docs/t13-code-changes.patch](docs/t13-code-changes.patch)
+* `t14` 相对 `t13`：[docs/t14-code-changes.patch](docs/t14-code-changes.patch)
+* `t16` 相对 `t14`：[docs/t16-code-changes.patch](docs/t16-code-changes.patch)
+
+## t16 修了什么
+
+### 破坏方块的裂纹不再印到手臂上
+
+破坏覆盖层写在 `colortex3`（用 `alpha = 1/255` 编码），由延迟阶段用
+`albedo = 2.0 * albedo * overlays.rgb` 合并——而且是**对每个像素无条件**应用。当第一人称手臂挡在
+正在被破坏的方块前时，手臂像素也会吃到这份覆盖层，于是裂纹被印在手臂上。现在手持程序在通过深度测试的
+像素上把 `colortex3` 清 0，与 `t12` 为粒子/水所做的 `colortex13` 清除完全对应。
+
+维护者注意：若按上游写法改回 `#ifdef IS_IRIS`（写 `colortex0`），裂纹会**完全不显示**——本包 gbuffer
+albedo 在 `colortex1`，`colortex0` 是 scene color，没人读那次写入。
+
+## t14 修了什么
+
+### 水面等半透明表面重新融入雾气
+
+`t12` 改写半透明程序结尾时丢掉了
+`fragment_color.a *= border_fog(position_scene, direction_world);`，于是远处水面/冰/旗帜保持不透明，
+清晰地压在雾化场景之上。现在恢复该衰减，并放在**预乘之前**，让预乘颜色携带含雾衰减的 alpha。
 
 ## t13 修了什么
 
