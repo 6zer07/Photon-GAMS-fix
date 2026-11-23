@@ -1,0 +1,34 @@
+--- a/shaders/program/gbuffers_all_solid.fsh
++++ b/shaders/program/gbuffers_all_solid.fsh
+@@ -282,10 +282,14 @@
+ 		frameCounter, 
+ 		texelFetch(noisetex, ivec2(gl_FragCoord.xy) & 511, 0).z
+ 	);
+-// One knob for entities and blocks alike: 0.00 = follow the texture alpha (most
+-	// translucent), 1.00 = no dithering at all (solid). Entity textures often carry low
+-	// alpha (wings, cloth, ...), so at low values they stay nearly invisible.
++// Entity textures follow the option: 0.00 = texture alpha (most translucent), 1.00 = solid.
++	// Their alpha is often low (wings, cloth, ...), so at low values they stay nearly invisible.
++	// Blocks (glass, ice, banners) are NOT affected and keep the fixed pre-t13 behaviour.
++#if defined PROGRAM_GBUFFERS_ENTITIES
+ 	float dither_alpha = mix(base_color.a, 1.0, TRANSLUCENT_ALPHA);
++#else
++	float dither_alpha = base_color.a < 1.0 ? base_color.a * 0.75 : 1.0;
++#endif
+ 	if (dither_alpha < dither_pattern) { discard; return; }
+ 	#endif
+ #endif
+--- a/shaders/program/gbuffers_all_translucent.fsh
++++ b/shaders/program/gbuffers_all_translucent.fsh
+@@ -484,7 +484,10 @@
+ 		fragment_color.rgb = mix(fragment_color.rgb, entityColor.rgb, entityColor.a);
+ #endif
+ 
+-#if defined PROGRAM_GBUFFERS_ENTITIES_TRANSLUCENT || defined PROGRAM_GBUFFERS_PARTICLES || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT || defined PROGRAM_GBUFFERS_BLOCK_TRANSLUCENT || defined PROGRAM_GBUFFERS_TEXTURED
++// Only entity textures are driven by TRANSLUCENT_ALPHA. Particles share this program since t12
++	// (they are routed here instead of the deferred gbuffer), but their alpha must not follow the
++	// option: raising it used to turn every particle opaque.
++#if defined PROGRAM_GBUFFERS_ENTITIES_TRANSLUCENT || defined PROGRAM_GBUFFERS_BLOCK_TRANSLUCENT || defined PROGRAM_GBUFFERS_TEXTURED
+ 		if (material_mask != 102 && material_mask != 62) fragment_color.a *= TRANSLUCENT_ALPHA;
+ #endif
+ 

@@ -1,0 +1,18 @@
+--- a/shaders/program/gbuffers_all_translucent.fsh
++++ b/shaders/program/gbuffers_all_translucent.fsh
+@@ -442,8 +442,14 @@
+ 
+ 	#ifdef WATER_WAVES
+ 		#ifdef DISTANT_HORIZONS
+-			// Use same TBN matrix calculation for vanilla water as for DH water (wasteful)
++			// Top surfaces must share one fixed tangent space between LoD water and regular
++			// water (the same approach as Photon 1.4). Deriving the tangent space from the
++			// vertex normal made neighbouring pixels disagree, so the water texture shimmered
++			// while the camera moved.
+ 			mat3 tbn = get_tbn_matrix(tbn[2]);
++			if (abs(tbn[2].y) > 0.99) {
++				tbn = mat3(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0));
++			}
+ 		#endif
+ 		vec3 world_pos = position_scene + cameraPosition;
+ 		vec2 coord = -(world_pos * tbn).xy;

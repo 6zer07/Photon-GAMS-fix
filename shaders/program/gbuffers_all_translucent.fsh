@@ -442,8 +442,14 @@ void main() {
 
 	#ifdef WATER_WAVES
 		#ifdef DISTANT_HORIZONS
-			// Use same TBN matrix calculation for vanilla water as for DH water (wasteful)
+			// Top surfaces must share one fixed tangent space between LoD water and regular
+			// water (the same approach as Photon 1.4). Deriving the tangent space from the
+			// vertex normal made neighbouring pixels disagree, so the water texture shimmered
+			// while the camera moved.
 			mat3 tbn = get_tbn_matrix(tbn[2]);
+			if (abs(tbn[2].y) > 0.99) {
+				tbn = mat3(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0));
+			}
 		#endif
 		vec3 world_pos = position_scene + cameraPosition;
 		vec2 coord = -(world_pos * tbn).xy;
@@ -484,7 +490,10 @@ void main() {
 		fragment_color.rgb = mix(fragment_color.rgb, entityColor.rgb, entityColor.a);
 #endif
 
-#if defined PROGRAM_GBUFFERS_ENTITIES_TRANSLUCENT || defined PROGRAM_GBUFFERS_PARTICLES || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT || defined PROGRAM_GBUFFERS_BLOCK_TRANSLUCENT || defined PROGRAM_GBUFFERS_TEXTURED
+// Only entity textures are driven by TRANSLUCENT_ALPHA. Particles share this program since t12
+	// (they are routed here instead of the deferred gbuffer), but their alpha must not follow the
+	// option: raising it used to turn every particle opaque.
+#if defined PROGRAM_GBUFFERS_ENTITIES_TRANSLUCENT || defined PROGRAM_GBUFFERS_BLOCK_TRANSLUCENT || defined PROGRAM_GBUFFERS_TEXTURED
 		if (material_mask != 102 && material_mask != 62) fragment_color.a *= TRANSLUCENT_ALPHA;
 #endif
 

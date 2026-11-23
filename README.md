@@ -15,28 +15,55 @@ This repository is a **community-fixed fork**. It continues
 [sixthsurge/photon](https://github.com/sixthsurge/photon).
 
 This fork's `main` branch carries the **t16** fix set: **7 shader files** changed on top of `t12`.
-Every step builds on the previous one and is verified by re-applying its patch:
 
 | version | what | size |
 | --- | --- | --- |
 | `t13` | particle occlusion tolerance, emissive albedo, fire-entity mask, translucent opacity | 7 files, +29 / −11 |
-| `t14` | translucent surfaces fade into fog again | 1 file, +5 / −0 |
-| `t16` | block-breaking overlay no longer bleeds onto the hand | 1 file, +8 / −4 |
+| `t16` | translucent surfaces fade into fog again; block-breaking overlay no longer bleeds onto the hand | 2 files, +13 / −4 |
+| `t18` | water no longer shimmers with Distant Horizons | 1 file, +7 / −1 |
+| `t17` | the translucency option now only affects entity textures | 2 files, +11 / −4 |
 
-Everything outside `README.md`, `README.zh_CN.md`, `CHANGELOG.md`, the four `docs/t*-code-changes.patch`
-files and `docs/logs/` is **byte-identical to the tested `t16` build** — no other file was touched.
+`t16` is the update **on top of the `t13` currently published on `main`**; both steps were verified by
+re-applying their patch. Everything outside `README.md`, `README.zh_CN.md`, `CHANGELOG.md`, the three
+`docs/t*-code-changes.patch` files and `docs/logs/` is **byte-identical to the tested `t16` build** — no
+other file was touched.
 
 * Full per-file history: [CHANGELOG.md](CHANGELOG.md)
 * Development logs: [docs/logs/](docs/logs/) · overview: [docs/history-index.md](docs/history-index.md)
 * Raw unified diff against upstream `main`: [docs/t12-code-changes.patch](docs/t12-code-changes.patch)
 * `t13` on top of `t12`: [docs/t13-code-changes.patch](docs/t13-code-changes.patch)
-* `t14` on top of `t13`: [docs/t14-code-changes.patch](docs/t14-code-changes.patch)
-* `t16` on top of `t14`: [docs/t16-code-changes.patch](docs/t16-code-changes.patch)
+* `t16` on top of `t13` — **the update described here**: [docs/t16-code-changes.patch](docs/t16-code-changes.patch)
 * 中文说明: [README.zh_CN.md](README.zh_CN.md)
 
-## What t16 fixes
+## What t18 fixes (on top of t17)
 
-### The block-breaking overlay no longer bleeds onto the hand
+### Water no longer shimmers with Distant Horizons
+
+The water texture is sampled with `world_pos * tbn`. Under DH the tangent space was derived from the
+vertex normal, so where DH's LoD water and the pack's water met, neighbouring pixels disagreed about the
+tangent space and the surface jittered while the camera moved. Top surfaces now use one hard-coded
+up-facing TBN matrix — the same fix Photon 1.4 applies — so both kinds of water share one tangent space.
+
+## What t17 fixes (on top of t16)
+
+### The translucency option only affects entity textures
+
+`TRANSLUCENT_ALPHA` used to be applied to every program that shares the translucent pipeline —
+including particles, which `t12` routed through it, so raising the slider made all particles opaque. It
+is now limited to `gbuffers_entities_translucent`, `gbuffers_block_translucent` and `gbuffers_textured`,
+and blocks keep the previous fixed dithering. Only translucent **entity** textures (modded wings, cloth,
+that sort of thing) follow the option.
+
+## What t16 fixes (on top of t13)
+
+### 1. Water and translucent surfaces fade into fog again
+
+`t12` dropped `fragment_color.a *= border_fog(position_scene, direction_world);` while rewriting the
+end of the translucent program, so distant water (and ice, banners) kept its full opacity and stayed
+crisp on top of a fogged scene whose terrain was washed out. The fade-out is restored and applied
+**before** premultiplication, so the premultiplied colour carries the fog-faded alpha.
+
+### 2. The block-breaking overlay no longer bleeds onto the hand
 
 The breaking overlay is stored in `colortex3` (encoded as `alpha = 1/255`) and merged in the deferred
 pass with `albedo = 2.0 * albedo * overlays.rgb` — unconditionally, for every pixel. When the
@@ -47,15 +74,6 @@ passes the depth test, mirroring the `colortex13` clear that `t12` added for par
 Note for maintainers: restoring upstream's `#ifdef IS_IRIS` variant (writing `colortex0`) makes the
 cracks disappear completely, because this pack keeps the gbuffer albedo in `colortex1` and
 `colortex0` is the scene colour.
-
-## What t14 fixes
-
-### Water and translucent surfaces fade into fog again
-
-`t12` dropped `fragment_color.a *= border_fog(position_scene, direction_world);` while rewriting the
-end of the translucent program, so distant water (and ice, banners) kept its full opacity and stayed
-crisp on top of a fogged scene whose terrain was washed out. The fade-out is restored and applied
-**before** premultiplication, so the premultiplied colour carries the fog-faded alpha.
 
 ## What t13 fixes
 

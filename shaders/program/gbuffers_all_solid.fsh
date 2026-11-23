@@ -282,10 +282,14 @@ void main() {
 		frameCounter, 
 		texelFetch(noisetex, ivec2(gl_FragCoord.xy) & 511, 0).z
 	);
-// One knob for entities and blocks alike: 0.00 = follow the texture alpha (most
-	// translucent), 1.00 = no dithering at all (solid). Entity textures often carry low
-	// alpha (wings, cloth, ...), so at low values they stay nearly invisible.
+// Entity textures follow the option: 0.00 = texture alpha (most translucent), 1.00 = solid.
+	// Their alpha is often low (wings, cloth, ...), so at low values they stay nearly invisible.
+	// Blocks (glass, ice, banners) are NOT affected and keep the fixed pre-t13 behaviour.
+#if defined PROGRAM_GBUFFERS_ENTITIES
 	float dither_alpha = mix(base_color.a, 1.0, TRANSLUCENT_ALPHA);
+#else
+	float dither_alpha = base_color.a < 1.0 ? base_color.a * 0.75 : 1.0;
+#endif
 	if (dither_alpha < dither_pattern) { discard; return; }
 	#endif
 #endif

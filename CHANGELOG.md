@@ -6,9 +6,10 @@ at `main` (last upstream push 2025-03-30), which is based on
 
 The raw diffs are kept in
 [`docs/t12-code-changes.patch`](docs/t12-code-changes.patch) (upstream `main` → `t12`),
-[`docs/t13-code-changes.patch`](docs/t13-code-changes.patch) (`t12` → `t13`),
-[`docs/t14-code-changes.patch`](docs/t14-code-changes.patch) (`t13` → `t14`) and
-[`docs/t16-code-changes.patch`](docs/t16-code-changes.patch) (`t14` → `t16`); they apply **in order**
+[`docs/t13-code-changes.patch`](docs/t13-code-changes.patch) (`t12` → `t13`) and
+[`docs/t16-code-changes.patch`](docs/t16-code-changes.patch) (`t13` → `t16`) and
+[`docs/t17-code-changes.patch`](docs/t17-code-changes.patch) (`t16` → `t17`) and
+[`docs/t18-code-changes.patch`](docs/t18-code-changes.patch) (`t17` → `t18`); they apply **in order**
 with `git apply -p1` (or `patch -p1`) from the repository root.
 
 Per-version development logs live in [`docs/logs/`](docs/logs/); the overview is
@@ -16,11 +17,48 @@ Per-version development logs live in [`docs/logs/`](docs/logs/); the overview is
 
 ---
 
-## t16 — 2026-10-19
+## t18 — 2026-11-18
 
-**1 file, +8 / −4 lines** on top of `t14`. Fixes the block-breaking overlay bleeding onto the hand.
+**1 file, +7 / −1 lines** on top of `t17`. Fixes shimmering water with Distant Horizons.
 
 ### Fixed
+
+* **Water shimmered while the camera moved with Distant Horizons enabled.** The water texture is
+  sampled with `world_pos * tbn`, and under DH the tangent space was derived from the vertex normal
+  (`get_tbn_matrix(tbn[2])`). Where DH's LoD water and the pack's own water meet, the two produce
+  slightly different tangent spaces, so neighbouring pixels sampled the texture at different positions
+  and the surface appeared to jitter. Top surfaces (`abs(tbn[2].y) > 0.99`) now use a single hard-coded
+  up-facing TBN matrix — exactly what Photon 1.4 does, and for the same reason — so LoD water and
+  regular water share one tangent space.
+* Diagnosis notes: two other candidates were tested first — TAA reprojection for translucent pixels
+  (no effect) and skipping `border_fog` under DH (no effect once a compile error in the experiment was
+  fixed). The vertex-normal tangent space was the actual cause. See `docs/logs/t18.md`.
+
+## t17 — 2026-11-03
+
+**2 files, +11 / −4 lines** on top of `t16`.
+
+### Fixed
+
+* **Particles no longer react to the translucency option.** Since `t12` routed particles through the
+  translucent program, `fragment_color.a *= TRANSLUCENT_ALPHA` also scaled particle alpha, so raising the
+  option turned every particle opaque. The option now only applies to
+  `gbuffers_entities_translucent`, `gbuffers_block_translucent` and `gbuffers_textured`;
+  `gbuffers_particles{,_translucent}` are excluded, and blocks keep the previous fixed dithering — only
+  translucent **entity** textures (wings, cloth, ...) follow the slider.
+## t16 — 2026-10-19
+
+**Update on top of the `t13` currently published on `main`** — 2 files, +13 / −4 lines.
+
+### Fixed
+
+* **Water and other translucent surfaces ignored fog.** While `t12` switched the translucent programs to
+  premultiplied alpha, it also dropped
+  `fragment_color.a *= border_fog(position_scene, direction_world);`. That term fades distant
+  translucent surfaces (water, ice, banners) out towards the horizon; without it, far water stayed
+  fully opaque on top of a scene whose terrain was already washed out by fog. Restored **before**
+  premultiplication, so the premultiplied colour carries the fog-faded alpha (`common_fog()` only takes
+  the view distance, so the placement is equivalent to upstream's "fade the alpha after fog").
 
 * **Block-breaking cracks were painted onto the first-person arm.** The overlay is written to
   `colortex3` with `alpha = 1/255` (`overlay_id == 1`) and merged in `d4_deferred_shading.fsh` with
@@ -32,21 +70,6 @@ Per-version development logs live in [`docs/logs/`](docs/logs/); the overview is
   makes the cracks **disappear entirely**. In this pack `colortex0` is the scene colour and the gbuffer
   albedo lives in `colortex1`, so nothing reads that write. Do not "fix" it that way (see
   `docs/logs/t15.md`).
-
-## t14 — 2026-10-17
-
-**1 file, +5 / −0 lines** on top of `t13`. Published as its own version because `t13` had already been
-uploaded without it.
-
-### Fixed
-
-* **Water and other translucent surfaces ignored fog.** While `t12` switched the translucent programs to
-  premultiplied alpha, it also dropped
-  `fragment_color.a *= border_fog(position_scene, direction_world);`. That term fades distant
-  translucent surfaces (water, ice, banners) out towards the horizon; without it, far water stayed
-  fully opaque on top of a scene whose terrain was already washed out by fog. Restored **before**
-  premultiplication, so the premultiplied colour carries the fog-faded alpha (`common_fog()` only takes
-  the view distance, so the placement is equivalent to upstream's "fade the alpha after fog").
 
 ## t13 — 2026-10-17
 
